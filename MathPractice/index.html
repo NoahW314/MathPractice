@@ -1,0 +1,122 @@
+﻿<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Math Practice</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://kit.fontawesome.com/d5378fe15a.js" crossorigin="anonymous"></script>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.11/dist/katex.min.css" integrity="sha384-Um5gpz1odJg5Z4HAmzPtgZKdTBHZdw8S29IecapCSB31ligYPhHQZMIlWLYQGVoc" crossorigin="anonymous">
+    <!-- The loading of KaTeX is deferred to speed up page rendering -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.13.11/dist/katex.min.js" integrity="sha384-YNHdsYkH6gMx9y3mRkmcJ2mFUjTd0qNQQvY9VYZgQd7DcN7env35GzlmFaZ23JGp" crossorigin="anonymous"></script>
+
+    <style>
+        .answer_input_input {
+            height: 30px;
+            width: 450px;
+            margin: 10px;
+            margin-left: 5px;
+        }
+
+        #answer_input_div {
+            margin-left: 15px;
+            line-height: 33px;
+        }
+
+        #reload_question {
+            margin-left: 15px;
+        }
+
+        .answer_status {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        i {
+            font-size: 25px;
+        }
+        .answer_type_hint {
+            font-size: 12.5px;
+            line-height: 1.5em;
+            vertical-align: super;
+            position: relative;
+            width: auto;
+            white-space: nowrap;
+        }
+        .answer_type_icon {
+            font-size: 12.5px;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .answer_type_text {
+            position: absolute;
+            top: -10px;
+            left: 0;
+            background-color: lightgray;
+            z-index: 2;
+            padding: 0.5em;
+        }
+
+        .correct_answer_text{
+            margin-top: -10px;
+            line-height: 44px;
+        }
+
+        .rendered_answer_input {
+            line-height: 0px;
+        }
+
+        .show_latex {
+            margin-left: 30px;
+        }
+
+        #show_answer {
+            margin-top: 15px;
+        }
+
+        #button_div {
+            margin-left: 15px;
+        }
+
+        #question_text {
+            margin-left: 15px;
+        }
+
+        select {
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <br>
+    <label for='subject_select'>Subject: </label>
+    <select id='subject_select'>
+        <option selected disabled value=''></option>
+        <option value='Differential Equations'>Differential Equations</option>
+    </select>
+    <span id='topic_select_span' hidden>
+        <label for='topic_select'>Topic: </label>
+        <select id='topic_select'>
+            <option selected value='None'>None</option>
+        </select>
+    </span>
+    <br>
+
+    <p id="question_text"></p>
+
+    <div id="answer_input_div">
+    </div>
+
+    <div id="button_div">
+        <input type="submit" value="Submit" id="answer_submit">
+        <button disabled id="reload_question">New/Next Question</button>
+        <br>
+        <button id="show_answer">Show Answer</button>
+    </div>
+
+    <script src="./processing.js" type="module"></script>
+
+</body>
+</html>

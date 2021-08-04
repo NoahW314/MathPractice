@@ -1,0 +1,9 @@
+{
+  "name": "math-practice",
+  "version": "0.0.0",
+  "description": "MathPractice",
+  "main": "server.js",
+  "author": {
+    "name": ""
+  }
+}

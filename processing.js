@@ -52,8 +52,8 @@ var getNewQuestion = function () {
         }
 
         // TODO: Unhack
-        //randomIndex = 0;
-        console.log(randomIndex);
+        //randomIndex = 1;
+        //console.log(randomIndex);
         topicArray = problems[subject][randomIndex];
     }
     else if (topic in problemsBySubject[subject]) {
@@ -64,12 +64,12 @@ var getNewQuestion = function () {
     }
     var randomIndex = Math.floor(Math.random() * topicArray.length);
     // TODO: Unhack
-    //randomIndex = 1;
+    //randomIndex = 3;
     //console.log(randomIndex);
     var setArray = topicArray[randomIndex];
     randomIndex = Math.floor(Math.random() * setArray.length);
     // TODO: Unhack
-    //randomIndex = 0;
+    //randomIndex = 1;
     //console.log(randomIndex);
     currQuestionSet = setArray[randomIndex];
     currQuestion = currQuestionSet.getInstance();

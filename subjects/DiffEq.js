@@ -972,11 +972,112 @@ const laplaceTransform = [new QuestionSet([
 		})
 ], AnswerType.Numeric)];
 
-// Solution by Power Series
+// Solution by Power Series -- 3 moderate constants
+var allEECoefficients = [[], [], []];
+for (var i = -6; i < 7; i++) {
+	for (var j = -6; j < 7; j++) {
+		if (i !== 0 && j !== 0) {
+			var determinant = (i - 1) ** 2 - 4 * j;
+			if (determinant > 0 && Math.abs(i - 1) !== Math.sqrt(determinant) && Number.isInteger(Math.sqrt(determinant))) {
+				allEECoefficients[0].push([i, j, 0, [-(i - 1) / 2 + Math.sqrt(determinant) / 2, -(i - 1) / 2 - Math.sqrt(determinant) / 2]]);
+			}
+			else if (determinant === 0 && i !== 1) {
+				allEECoefficients[1].push([i, j, 1, [-(i - 1) / 2]]);
+			}
+			else if (determinant < 0 && Number.isInteger(Math.sqrt(-determinant))) {
+				allEECoefficients[2].push([i, j, 2, [-(i - 1) / 2, Math.sqrt(-determinant) / 2]]);
+			}
+		}
+	}
+}
+const pickCoefficientsEE = function () {
+	const randIndex = randInt(0, 2);
+	coefficients = allEECoefficients[randIndex][randInt(0, allEECoefficients[randIndex].length - 1)];
+}
+const evaluateByTerms = function (a0, a1, t, recRel) {
+	var sum = 0;
+	var an = a0;
+	var an1 = a1;
+	var prevTerm = a0;
+	var term = a1 * t;
+	var n = 2;
+	sum = prevTerm + term;
+	while (Math.abs(term) > 0.00001 || Math.abs(prevTerm) > 0.00001) {
+		var aNext = recRel(an, an1, n - 2);
+		prevTerm = term;
+		term = aNext * (t ** n);
+		sum += term;
+		n++;
+		an = an1;
+		an1 = aNext;
+	}
+	return sum;
+}
 const ordinaryPointSeries = new QuestionSet([
-
+	new QuestionClass("Solve the initial value problem $y''+ty #9(#1)y=0, \\; y(0)=#2 , \\; y'(0)=#3 $ and find $y(#4 )$.",
+		"#5(#1, #2, #3, #4)", "$a_{n+2}=-\\frac{n #9 }{(n+2)(n+1)}a_n$",
+		{
+			"1": () => randIntExclude(-4, 4, 0), "2": () => randInt(-4, 4), "3": () => randInt(-4, 4), "4": () => randIntExclude(-4, 4, 0) / 10,
+			"9": addsub, "5": (a, b, c, d) => +(evaluateByTerms(b, c, d, (an, an1, n) => -((n + a) / ((n + 2) * (n + 1))) * an)).toFixed(4)
+		}),
+	new QuestionClass("Solve the initial value problem $#1 y''+(t+1)y' #9(#2)y=0, \\; y(2)=#3 , \\; y'(2)=#4 $ and find $y(#5 )$.",
+		"#6(#1, #2, #3, #4, #5)", "$a_{n+2}=-\\frac{3a_{n+1}}{#1 (n+2)}-\\frac{(n #9(#2))a_n}{#1 (n+2)(n+1)}$",
+		{
+			"1": () => randIntExclude(-4, 4, 0), "2": () => randIntExclude(-4, 4, 0), "3": () => randInt(-4, 4),
+			"4": () => randInt(-4, 4), "5": () => 2 + randIntExclude(-3, 3, 0) / 10, "9": addsub,
+			"6": (a, b, c, d, e) => +(evaluateByTerms(c, d, e, (an, an1, n) => -3 * an1 / (a * (n + 2)) - (n + b) * an / (a * (n + 2) * (n + 1)))).toFixed(4)
+		})
 ], AnswerType.Numeric);
-const singularPointSeries = new QuestionSet([], AnswerType.Numeric);
+const singularPointSeries = new QuestionSet([
+	new QuestionClass("Solve the initial value problem $t^2y'' #9(#1)ty' #9(#2)y=0, \\; y(1)=#3 , \\; y'(1)=#4 $ and find $y(#5 )$.",
+		"#6(#3, #4, #5)", "$y(t)=#7(#3, #4)$",
+		{
+			"1": () => { pickCoefficientsEE(); return coefficients[0]; }, "2": () => coefficients[1], "3": () => randInt(-4, 4),
+			"4": () => randInt(-4, 4), "5": () => +(randInt(1, 4) / 10).toFixed(1), "9": addsub, "6": (c, d, f) => {
+				const b = [c, d];
+				const r = coefficients[3];
+				if (coefficients[2] === 0) {
+					// y=c1 t^{r1}+ c2 t^{r2}
+					var A = [[1, 1], [r[0], r[1]]];
+					const c = rref(A, b);
+					return +(c[0] * (f ** r[0]) + c[1] * (f ** r[1])).toFixed(4);
+				}
+				else if (coefficients[2] === 1) {
+					// y=c1 t^r + c2 t^r ln(t)
+					var A = [[1, 0], [r[0], 1]];
+					const c = rref(A, b);
+					return +((f ** r[0]) * (c[0] + c[1] * Math.log(f))).toFixed(4);
+				}
+				else {
+					// y= c1 t^l cos(u ln(t))+ c2 t^l sin(u ln(t))
+					var A = [[1, 0], [r[0], r[1]]];
+					const c = rref(A, b);
+					return +(c[0] * (f ** r[0]) * Math.cos(r[1] * Math.log(f)) + c[1] * (f ** r[0]) * Math.sin(r[1] * Math.log(f))).toFixed(4);
+				}
+			}, "7": (c, d) => {
+				const b = [c, d];
+				const r = coefficients[3];
+				if (coefficients[2] === 0) {
+					// y=c1 t^{r1}+ c2 t^{r2}
+					var A = [[1, 1], [r[0], r[1]]];
+					const c = rref(A, b);
+					return +(c[0]).toFixed(2)+"t^{"+r[0]+"}" + addsub(+(c[1]).toFixed(2))+"t^{"+r[1]+"}";
+				}
+				else if (coefficients[2] === 1) {
+					// y=c1 t^r + c2 t^r ln(t)
+					var A = [[1, 0], [r[0], 1]];
+					const c = rref(A, b);
+					return "t^{"+r[0]+"}("+ +(c[0]).toFixed(2) + addsub(+(c[1]).toFixed(2))+"\\ln t)";
+				}
+				else {
+					// y= c1 t^l cos(u ln(t))+ c2 t^l sin(u ln(t))
+					var A = [[1, 0], [r[0], r[1]]];
+					const c = rref(A, b);
+					return +(c[0]).toFixed(2) + "t^{" + r[0] + "}\\cos(" + r[1] + "\\ln t)" + addsub(+(c[1]).toFixed(2)) + "t^{" + r[0] + "}\\sin(" + r[1] + "\\ln t)";
+				}
+			}
+		})
+], AnswerType.Numeric);
 const powerSeries = [ordinaryPointSeries, singularPointSeries];
 
 // Definitions/terms

@@ -1,4 +1,7 @@
 # Adding new subjects and problems
+
+To facilitate testing of new subjects and problems, I put lines in *question.js* and *processing.js* that allow you to set which topic, QuestionSet, and QuestionClass is chosen.  I marked these with "//TODO: Unhack" markers.
+
 ## Adding a new subject
 
  1. Create a new file in the *subjects* folder.  The file should be named after the subject.
@@ -38,7 +41,7 @@ To denote and choose arbitrary constants within the text or answer of questions,
 When the string is parsed, each constant function is replaced with the result of calling the specified function.  The syntax is `"#name "`, where `name` is the name of the function.  The `#` signals the beginning of the name and the space marks the end.  The name can be anything, though we use numbers WLOG.  This syntax only works when the function doesn't get passed any parameters.
 
 To pass parameters (typically other constant functions), use this syntax:
-`#name(#param1, #param2, #param3)`.  No spaces are required after any of the names unless there is only one parameter.  That is, `#func(#param )` with the space is required.  Functions can be nested, so `#func1(#func2(#param1 ))` works. 
+`#name(#param1, #param2, #param3)`.  No spaces are required after any of the names even if there is only one parameter.  That is, `#func(#param)` with no space is *required*.  Functions can be nested, so `#func1(#func2(#param1))` works. 
 Non-constant functions can be passed as parameters, but it is usually easier to just pass them normally using a lambda function in replacements (e.x. `() => func(1, "Hello")`).
 
 After a function has been called once the last value of the function call can be accessed by just doing `"#func "` without having to repass the parameters.  Note that this function could have been called with different parameters since the last time you used it, so it best not to rely on this behavior too much.

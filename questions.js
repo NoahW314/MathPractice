@@ -447,7 +447,7 @@ class QuestionSet {
 	getInstance() {
 		var randomIndex = Math.floor(Math.random() * this.questions.length);
 		// TODO: Unhack
-		//randomIndex = 2;
+		//randomIndex = 0;
 		//console.log(randomIndex);
 		return this.questions[randomIndex].getInstance();
 	};

@@ -1,3 +1,49 @@
+# Adding new subjects and problems
+## Adding a new subject
+
+ 1. Create a new file in the *subjects* folder.  The file should be named after the subject.
+ 2. Add 3 groupings to the end of the file modeled after those in the DiffEq example and export them. (The meanings are explained in the *question.js* docs)
+ 3. Create low-level topic arrays as needed.
+ 4. Add the subject name in the "subject_select" selector in *index.html*.
+ 5. In *processing.js*, add an import statement like the one for DiffEq. (The names of the objects imported need to match those in the subject file.)
+ 6. Update the `problems`, `problemsBySubject`, and `problemsNamed` objects to include the problems for the new subject. (The keys for these objects should match the value for the subject on the "subject_select" selector.)
+
+## Adding a new QuestionSet
+
+ 1. If needed, create an array to represent the low-level topic for this Set.
+ 2. Create a new QuestionSet object within the array. (Or outside it and reference it with a variable).
+ 3. The first parameter is an array containing the various QuestionClasses (See below for creating a new QuestionClass).
+ 4. The second parameter is the answer type--the type of response that the user will give (multiple choice, select all that apply, number, exact expression, etc.).  If there are multiple parts to the answer (e.x. a numeric answer and a multiple choice classification), then an array of AnswerTypes can be provided. 
+	 - If desired, the answer type may be wrapped in an array with a string to give different text for the answer input. (e.x ["Order", AnswerType.Exact] gives an answer input with "Order" instead of "Answer" as the label.  This works with all answer types.)
+ 5.  Each AnswerType has a validator function that checks the user's answer against the correct answer.  If desired, this can be overridden with a custom validator function that is passed as the third parameter.  If an array of AnswerTypes was given, then an array of validators needs to be provided if any of them should be overwritten (use `undefined` for any validators that shouldn't be overwritten).
+ 6. The fourth parameter allows the hints to be overridden. (the little info circle near the answer input that tells what answer type is expected.)  Like the third parameter, if an array of AnswerTypes was given, an array should be given with any un-overwritten hint spots set to undefined.  The hint should be a string and will be parsed as html.
+
+## Adding a new QuestionClass
+
+ 1. The first parameter of a QuestionClass object is a string for the text of the question.  This string will be parsed as LaTeX and can have "constant functions" (see below for rules on using constant functions). Note that `\` has to be escaped within strings, so most LaTeX commands will look like this `"\\frac{}{}"`.
+ 2. The second parameter is the correct answer for the question and must be a string that will be parsed as LaTeX with constant function support (it is automatically surrounded by dollar signs, unless it is a multiple choice or select all question).  
+	 - Typically, this is just a constant function that takes all the constants from the equation as parameters and computes the answer (or in the case of multiple choice or select all, it may be a constant string).  
+	 - If the question has multiple answer parts, then an array of answers should be given.  If the question has the SelectAll answer type, then an array of correct answers should be given (possibly nested within the array of answers for multiple question parts.)
+ 3. The third parameter is the explanation of the answer that appears when "Show Answer" is clicked.  This parameter must be a string and will be parsed as LaTeX with constant function support.  If no explanation is to be given, then a string with a single space *must* be passed.  Again, for multiple answer parts, multiple explanations must be given, with omitted explanations being `" "`.
+ 4. The fourth parameter should be an object which maps the constant function names used to actual functions.  Lambda functions and storing functions in variables are frequently helpful.
+ 5. The fifth parameter must be set only when there is one or more MultipleChoice or SelectAll answer parts to the question.
+	 - If there is a single answer part, then an array of strings, the various choices, should be passed.  The answer(s) provided earlier should match the correct string(s) exactly*.
+	- If there are multiple answer parts, then an array containing the above array should be used.  Any answer parts which aren't MultipleChoice or SelectAll should have an empty array `[]` in their spot in this array.
+	 - The string will be parsed as LaTeX with constant function support, however since the answer need match this, it is preferably (maybe necessary?) to use `Option` if need either of these things to be supported.
+	 - *Instead of a string, an `Option` object can be used.  This object has two properties, a value and a display.  The value should match the answer given as the 2nd parameter and will not be parsed, while the display doesn't have to match anything and will be parsed as Latex with constant function support.
+
+## Constant functions
+To denote and choose arbitrary constants within the text or answer of questions, we have what I call "constant functions" (since they are functions that give mathematical constants).
+
+When the string is parsed, each constant function is replaced with the result of calling the specified function.  The syntax is `"#name "`, where `name` is the name of the function.  The `#` signals the beginning of the name and the space marks the end.  The name can be anything, though we use numbers WLOG.  This syntax only works when the function doesn't get passed any parameters.
+
+To pass parameters (typically other constant functions), use this syntax:
+`#name(#param1, #param2, #param3)`.  No spaces are required after any of the names unless there is only one parameter.  That is, `#func(#param )` with the space is required.  Functions can be nested, so `#func1(#func2(#param1 ))` works. 
+Non-constant functions can be passed as parameters, but it is usually easier to just pass them normally using a lambda function in replacements (e.x. `() => func(1, "Hello")`).
+
+After a function has been called once the last value of the function call can be accessed by just doing `"#func "` without having to repass the parameters.  Note that this function could have been called with different parameters since the last time you used it, so it best not to rely on this behavior too much.
+
+Each constant function accessed should have a corresponding property in the `replacements` object.  So if `"#add "` is used  somewhere, then there should an `"add"` property in `replacements`.
 
 # Structure Documentation
 ## Overview

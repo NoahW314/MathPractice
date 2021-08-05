@@ -29,7 +29,17 @@ http.createServer(function (request, response) {
         response.write(jsFile);
         response.end();
     }
-    // TODO: add an icon via favicon.ico?
+    else if (url === "/favicon.ico") {
+        response.writeHeader(200, { "Content-Type": "image/x-icon" });
+        var favicon;
+        try {
+            favicon = fs.readFileSync('./favicon.ico');
+        } catch (err) {
+            console.log(err);
+        }
+        response.write(favicon);
+        response.end();
+    }
     else {
         response.writeHeader(200, { "Content-Type": "text/plain" });
         response.end("");

@@ -1,0 +1,4 @@
+bin/*
+obj/**
+*.njsproj
+*.njsproj.user

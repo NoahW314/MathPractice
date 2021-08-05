@@ -1,3 +1,0 @@
-C:\Users\noahw\Desktop\Web\MathPractice\MathPractice\obj\Debug\MathPractice.njsprojAssemblyReference.cache
-C:\Users\noahw\Desktop\Web\MathPractice\MathPractice\obj\Debug\MathPractice.njsproj.CoreCompileInputs.cache
-C:\Users\noahw\Desktop\Web\MathPractice\MathPractice\bin\Microsoft.NodejsTools.WebRole.dll

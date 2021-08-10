@@ -8,7 +8,7 @@ To facilitate testing of new subjects and problems, I put lines in *question.js*
  2. Add 3 groupings to the end of the file modeled after those in the DiffEq example and export them. (The meanings are explained in the *question.js* docs)
  3. Create low-level topic arrays as needed.
  4. Add the subject name in the "subject_select" selector in *index.html*.
- 5. In *processing.js*, add an import statement like the one for DiffEq. (The names of the objects imported need to match those in the subject file.)
+ 5. In *processing.js*, add an require statement like the one for DiffEq. (The names of the objects imported should match those in the subject file.)
  6. Update the `problems`, `problemsBySubject`, and `problemsNamed` objects to include the problems for the new subject. (The keys for these objects should match the value for the subject on the "subject_select" selector.)
 
 ## Adding a new QuestionSet

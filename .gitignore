@@ -1,4 +1,5 @@
 bin/*
 obj/**
+node_modules/**
 *.njsproj
 *.njsproj.user

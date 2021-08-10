@@ -1,5 +1,5 @@
 
-import { ComplexNumber } from "./util.js";
+const { ComplexNumber } = require("./util.js");
 
 // Class for a concrete instance of a question and answer
 
@@ -464,4 +464,4 @@ class QuestionSet {
 	};
 };
 
-export { QuestionSet, QuestionClass, Question, AnswerType, Option };
+module.exports = { QuestionSet, QuestionClass, Question, AnswerType, Option };

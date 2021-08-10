@@ -120,7 +120,7 @@ class ComplexNumber {
 	};
 };
 
-export {
+module.exports = {
 	ComplexNumber, randInt, randIntExclude, randI, randIE, neg, addsub,
 	fix, prec, piFracStr, rref
 };

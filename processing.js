@@ -1,16 +1,20 @@
 
-import { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed } from "./subjects/DiffEq.js";
-import { AnswerType } from "./questions.js";
-import { randInt } from "./util.js";
+const { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed } = require("./subjects/DiffEq.js");
+const { linAlgProbs, linAlgProbsBySubject, linAlgProbsNamed } = require("./subjects/LinearAlgebra.js");
+const { AnswerType } =  require("./questions.js");
+const { randInt } = require("./util.js");
 
 var problems = {
-    "Differential Equations": diffEqProbs
+    "Differential Equations": diffEqProbs,
+    "Linear Algebra": linAlgProbs
 };
 var problemsBySubject = {
-    "Differential Equations": diffEqProbsBySubject
+    "Differential Equations": diffEqProbsBySubject,
+    "Linear Algebra": linAlgProbsBySubject
 };
 var problemsNamed = {
-    "Differential Equations": diffEqProbsNamed
+    "Differential Equations": diffEqProbsNamed,
+    "Linear Algebra": linAlgProbsNamed
 };
 
 var answerInputDivs = [];

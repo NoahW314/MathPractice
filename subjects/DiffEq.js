@@ -1,5 +1,6 @@
-import { QuestionSet, QuestionClass, AnswerType, Option } from "../questions.js";
-import { randInt, randIntExclude, randI, randIE, neg, addsub, fix, piFracStr, rref } from "../util.js";
+const { QuestionSet, QuestionClass, AnswerType, Option } = require("../questions.js");
+const { randInt, randIntExclude, randI, randIE, neg, addsub, fix, piFracStr, rref } = require("../util.js");
+
 
 //-----------------------------------------------------------------------------
 // 1st order ODEs
@@ -1560,4 +1561,4 @@ var diffEqProbsNamed = {
 	"2nd Order Definitions/Terms": secondDefinitionsTerms, "Higher Order Linear Homogeneous ODEs": linearHigherHomo, "Higher Order Linear nonHomogeneous ODEs": linearHigherNonHomo
 };
 
-export { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed };
+module.exports = { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed };

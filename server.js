@@ -1,6 +1,7 @@
 'use strict';
 const http = require('http');
 const fs = require('fs');
+const browserify = require('browserify');
 var port = process.env.PORT || 1337;
 
 
@@ -18,7 +19,14 @@ http.createServer(function (request, response) {
         response.write(html);
         response.end();
     }
+    else if (url === "/bundle.js") {
+        response.writeHeader(200, { "Content-Type": "text/javascript" });
+        var bundle = browserify();
+        bundle.add(__dirname + "/processing.js");
+        bundle.bundle().pipe(response);
+    }
     else if (url.endsWith(".js")) {
+        console.log(url);
         response.writeHeader(200, { "Content-Type": "text/javascript" });
         var jsFile;
         try {
@@ -41,7 +49,7 @@ http.createServer(function (request, response) {
         response.end();
     }
     else {
-        response.writeHeader(200, { "Content-Type": "text/plain" });
-        response.end("");
+        response.statusCode = 404;
+        response.end();
     }
 }).listen(port);

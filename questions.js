@@ -1,5 +1,5 @@
 
-const { ComplexNumber } = require("./util.js");
+const { ComplexNumber, arrFromLatexStr } = require("./util.js");
 
 // Class for a concrete instance of a question and answer
 
@@ -8,7 +8,7 @@ const { ComplexNumber } = require("./util.js");
 // Anything in math mode will be rendered in displaystyle, but inline.
 // Remember to escape slashes in the string
 class Question {
-	constructor(text, answer, answer_explanation, options) {
+	constructor(text, answer, answer_explanation, options, matrix_dims) {
 		// The actual text of the question
 		this.text = render(text);
 		// The answer that will be checked against the user input.
@@ -27,9 +27,15 @@ class Question {
 		// If this is a multiple choice question, then these are the choices
 		// otherwise, it is undefined
 		this.options = options;
+		// If this is a matrix question, then these are the dimensions of the matrix
+		// otherwise, it is undefined
+		this.matrix_dims = matrix_dims;
 	};
 	getOptions(i) {
 		return this.options[i];
+	};
+	getDims(i) {
+		return this.matrix_dims[i];
 	};
 };
 
@@ -72,13 +78,13 @@ class Option {
 // same form, but each individual question will have different values for constants
 // These values will be represented by variables denoted by a # on one side and a space on the other side
 class QuestionClass {
-	constructor(text, answer_form, answer_explanation_form, replacements, options) {
+	constructor(text, answer_form, answer_explanation_form, replacements, options, matrix_info) {
 		// The actual text of the question
 		this.text = text;
 		// The general form that the answer takes
-		if (!Array.isArray(answer_form)) this.answer_form = [answer_form];
-		else if (options !== undefined && !Array.isArray(options[0]) && !Array.isArray(answer_form[0])) this.answer_form = [answer_form];
-		else this.answer_form = answer_form;
+		if (!Array.isArray(answer_form)) this.answer_form = [answer_form]; // standard, single part question
+		else if (options !== undefined && !Array.isArray(options[0]) && !Array.isArray(answer_form[0])) this.answer_form = [answer_form]; // multiple choice question
+		else this.answer_form = answer_form; // multi-part answer
 		// The general form that the explanation takes
 		if (!Array.isArray(answer_form)) this.answer_explanation_form = [answer_explanation_form];
 		else this.answer_explanation_form = answer_explanation_form;
@@ -107,6 +113,12 @@ class QuestionClass {
 				}
 			}
 		}
+		// If this is a matrix question (or a question with a matrix part), 
+		// then this is the string in the info object which will map to the 
+		// matrix whose dimensions are the same as the answers.
+		//  otherwise, it is undefined
+		if (!Array.isArray(matrix_info)) this.matrix_info = [matrix_info]; 
+		else this.matrix_info = matrix_info;
 	};
 	handleNormal(char, new_text, info) {
 		if (char === "#") {
@@ -264,6 +276,7 @@ class QuestionClass {
 		var answer = [];
 		var answer_explanation = [];
 		var options = [];
+		var matrix_dims = [];
 		
 		for (var i = 0; i < this.answer_form.length; i++) {
 			if (Array.isArray(this.answer_form[i])) {
@@ -289,17 +302,45 @@ class QuestionClass {
 			else if (this.options[i] === undefined) options.push(undefined);
 			else options.push(new Option(this.options[i].value, render(this.parse(this.options[i].display, info))));
 		}
+		for (var i = 0; i < this.matrix_info.length; i++) {
+			if (this.matrix_info[i] == undefined) {
+				matrix_dims.push(undefined);
+			}
+			else {
+				var mat = info.values[this.matrix_info[i]];
+				matrix_dims.push([mat.rows, mat.columns]);
+			}
+		}
+
 
 		// return a ready-to-use Question instance
-		return new Question(new_text, answer, answer_explanation, options);
+		return new Question(new_text, answer, answer_explanation, options, matrix_dims);
 	};
 };
 
+
+
 // "enum" that represents some general catergories that answers can fall into
-const AnswerType = {
-	Other: 0, Numeric: 1, Exact: 2, Complex: 3, SelfCheck: 4,
-	MultipleChoice: 5, SelectAll: 6, Interval: 7
-};
+//   matrix sizes are represented by an array.
+class AnswerType {
+	static Other = new AnswerType(0);
+	static Numeric = new AnswerType(1);
+	static Exact = new AnswerType(2);
+	static Complex = new AnswerType(3);
+	static SelfCheck = new AnswerType(4);
+	static MultipleChoice = new AnswerType(5);
+	static SelectAll = new AnswerType(6);
+	static Interval = new AnswerType(7);
+	static Matrix = (r, c) => {
+		if (r === undefined || c === undefined) {
+			return new AnswerType([]);
+		}
+		else return new AnswerType([r, c]);
+	}
+	constructor(value) {
+		this.val = value;
+	}
+}
 const numericValidator = function (userAnswer, correctAnswer) {
 	// the user's answer in decimal
 	var userAnswerD = Number(userAnswer);
@@ -344,6 +385,18 @@ const numericValidator = function (userAnswer, correctAnswer) {
 		return userAnswerD.toFixed(2) == Number(correctAnswer).toFixed(2);
 	}
 };
+const matrixValidator = function (userArr, correctAnswer, r, c) {
+	// correctAnswer is a matrix formatted as a Latex String, so we have to convert it to an array 
+	var correctArr = arrFromLatexStr(correctAnswer);
+	for (var i = 0; i < r; i++) {
+		for (var j = 0; j < c; j++) {
+			if (!numericValidator(userArr[i][j], correctArr[i][j])) {
+				return false;
+			}
+		}
+	}
+	return true;
+};
 // When possible, maps the answer type to a function which can validate an answer of that type
 const validators = {
 	1: numericValidator,
@@ -354,8 +407,8 @@ const validators = {
 		return new ComplexNumber(userAnswer).equals(new ComplexNumber(correctAnswer));
 	},
 	4: function (userAnswer, correctAnswer) {
-		return true; // I'm always right ;)
-	},
+		return true; // I'm always right (;
+  	},
 	5: function (userAnswer, correctAnswer) {
 		return userAnswer === correctAnswer;
 	},
@@ -426,6 +479,10 @@ class QuestionSet {
 
 				if (answer_validation !== undefined && answer_validation[i] !== undefined) {
 					this.validate.push(answer_validation[i]);
+				}
+				// special case for matrix answers
+				else if (Array.isArray(aType.val)) {
+					this.validate.push((userAnswer, correctAnswer) => matrixValidator(userAnswer, correctAnswer, aType.val[0], aType.val[1]));
 				}
 				else if (aType !== AnswerType.Other) {
 					this.validate.push(validators[aType]);

@@ -2,7 +2,8 @@
 const { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed } = require("./subjects/DiffEq.js");
 const { linAlgProbs, linAlgProbsBySubject, linAlgProbsNamed } = require("./subjects/LinearAlgebra.js");
 const { AnswerType } =  require("./questions.js");
-const { randInt } = require("./util.js");
+const { randInt, matToLatexStr } = require("./util.js");
+const { Matrix } = require("ml-matrix");
 
 var problems = {
     "Differential Equations": diffEqProbs,
@@ -143,6 +144,30 @@ var getNewQuestion = function () {
             // add the wrapper to the main screen
             answerInputDiv.append(selectDiv);
         }
+        // special case for matrices
+        else if (Array.isArray(aType.val)) {
+            // handling the dimensions of a variable matrix size is weird.
+            var dims = aType.val;
+            if (aType.val[0] === undefined) {
+                dims = currQuestion.matrix_dims[i];
+            }
+            // create the wrapper for matrix boxes
+            var matrixDiv = $("<div class='answer_input' id='matrix_div_thing_input'></div>");
+            if (answerText === "Answer") {
+                answerText = "Matrix: ";
+            }
+            matrixDiv.append($("<p>" + answerText + "</p>"));
+
+            
+            // set up the input boxes for the matrix elements
+            for (var k = 0; k < dims[0]; k++) {
+                for (var j = 0; j < dims[1]; j++) {
+                    matrixDiv.append($("<input type='text' class='answer_matrix_input' id='matrix_input"+i+"_"+k+"_"+j+"'>"));
+                }
+                matrixDiv.append($("<br>"));
+            }
+            answerInputDiv.append(matrixDiv);
+        }
         else {
             // create the wrapper for the input element
             var inputDiv = $("<div class='answer_input'></div>");
@@ -216,12 +241,40 @@ $("#answer_submit").click(function () {
         else aType = currQuestionSet.answerType[i];
 
         if (aType === AnswerType.MultipleChoice) {
-            answer = answerInputDivs[i].find("input[type='radio'][name='answer_"+i+"']:checked").val();
+            answer = answerInputDivs[i].find("input[type='radio'][name='answer_" + i + "']:checked").val();
         }
         else if (aType === AnswerType.SelectAll) {
-            answer = answerInputDivs[i].find("input[type='checkbox'][name='answer_"+i+"']:checked").map(function () {
+            answer = answerInputDivs[i].find("input[type='checkbox'][name='answer_" + i + "']:checked").map(function () {
                 return $(this).val();
             }).get();
+        }
+        // Matrix Answer Type
+        else if (Array.isArray(aType.val)) {
+            var dims = aType.val;
+            if (aType.val[0] === undefined) {
+                dims = currQuestion.matrix_dims[i];
+            }
+            var answerMat = new Matrix(dims[0], dims[1]);
+            answer = [];
+            for (var k = 0; k < dims[0]; k++) {
+                answer.push([]);
+                for (var j = 0; j < dims[1]; j++) {
+                    var val = $("#matrix_input" + i + "_" + k + "_" + j).val();
+                    answerMat.set(k, j, new Number(val));
+                    answer[k].push(val);
+                }
+            }
+            var renderedAnswerInput = answerInputDivs[i].find(".rendered_answer_input").get(0);
+            var latexMatrixString = matToLatexStr(answerMat);
+            try {
+                katex.render(latexMatrixString, renderedAnswerInput);
+            } catch (err) {
+                if (err instanceof katex.ParseError) {
+                    katex.render(answerMat, renderedAnswerInput, { throwOnError: false });
+                    return;
+                }
+                else { throw err; }
+            }
         }
         else {
             answer = answerInputDivs[i].find(".answer_input_input").val();

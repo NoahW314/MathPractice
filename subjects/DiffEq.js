@@ -1138,8 +1138,8 @@ const analyticFunction = new QuestionSet([
 		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "0"), new Option("4", "#3(#1, #2)")]),
 	new QuestionClass("Select all points at which the function $f(x)=\\frac{x^2+1}{(x #4(#1))(x #4(#2(#1)))}$ is analytic.",
 		["3", "4"], " ",
-		{ "1": randIE, "2": (a) => randIntExclude(-9, 9, 0, a), "3": (a, b) => randIntExclude(-9, 9, 0, a, b), "4": addsub },
-		[new Option("2", "#2 "), new Option("3", "0"), new Option("4", "#3(#1, #2)"), new Option("1", "#1 ")])
+		{ "1": randIE, "2": (a) => randIntExclude(-9, 9, 0, a), "3": (a, b) => randIntExclude(-9, 9, 0, a, b), "4": addsub, "5": neg },
+		[new Option("2", "#5(#2)"), new Option("3", "0"), new Option("4", "#3(#1, #2)"), new Option("1", "#5(#1)")])
 ], AnswerType.SelectAll);
 // Ordinary Points, Regular/Irregular Singular Points
 const ordinarySingularPoints = new QuestionSet([
@@ -1558,7 +1558,7 @@ var diffEqProbsNamed = {
 	"Numerical Approximation": numericalApprox, "1st Order Definition/Terms": firstDefinitionsTerms,
 	"Linear Homogeneous 2nd Order ODEs": linear2ndHomo, "Linear Nonhomogeneous 2nd Order ODEs": linear2ndNonHomo,
 	"Reduction of Order": reductionOfOrder, "Variation of Parameters": variationParameters2nd, "Laplace Transform": laplaceTransform, "Power Series Solutions": powerSeries,
-	"2nd Order Definitions/Terms": secondDefinitionsTerms, "Higher Order Linear Homogeneous ODEs": linearHigherHomo, "Higher Order Linear nonHomogeneous ODEs": linearHigherNonHomo
+	"2nd Order Definitions/Terms": secondDefinitionsTerms, "Higher Order Linear Homogeneous ODEs": linearHigherHomo, "Higher Order Linear Nonhomogeneous ODEs": linearHigherNonHomo
 };
 
 module.exports = { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed };

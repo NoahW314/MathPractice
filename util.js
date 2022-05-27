@@ -1,4 +1,6 @@
 
+const { Matrix } = require("ml-matrix");
+
 // Note that these are both inclusive on both ends
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
 const randIntExclude = function (min, max, ...exclude) {
@@ -62,13 +64,69 @@ const rref = function (A, b) {
 	}
 	return ans;
 }
+const matToLatexStr = function (A) {
+	var str = "\\displaystyle\\left[\\begin{array}";
+	str += "{" + ("c".repeat(A.columns)) + "}\n";
+	for (var i = 0; i < A.rows; i++) {		
+		for (var j = 0; j < A.columns; j++) {
+			if (j != 0) {
+				str += " & ";
+			}
+			str += A.get(i, j);
+			}
+			str += "\\\\ \n";
+	}
+	str += "\\end{array}\\right]";
+	return str;
+}
+/*
+\displaystyle\left[\begin{array}{cccc}
+-7 & -3 & -1 & -9\\
+0 & -2 & 0 & -2\\
+-4 & 1 & 3 & -9\\
+ \end{array}\right]
+ */
+const arrFromLatexStr = function (str) {
+	var arr = [];
+
+	var start = str.indexOf("\n");
+	var end = str.indexOf("\\end");
+	str = str.slice(start+1, end-1);
+	str = str.replaceAll("\\\\", "");
+
+	var rows = str.split("\n");
+	for (var i = 0; i < rows.length; i++) {
+		arr.push(rows[i].split("&"));
+	}
+
+	return arr;
+}
+// an array for r or c specifies a range for them
+const randMat = function (r, c, min, max, ...exclude) {
+	var rows = r;
+	var cols = c;
+	if (Array.isArray(r)) {
+		rows = randInt(r[0], r[1]);
+	}
+	if (Array.isArray(c)) {
+		cols = randInt(c[0], c[1]);
+	}
+
+	var A = new Matrix(rows, cols);
+	for (var i = 0; i < rows; i++) {
+		for (var j = 0; j < cols; j++) {
+			A.set(i, j, randIntExclude(min, max, exclude));
+		}
+	}
+	return A;
+}
 
 //TODO: This parsing constructor is untested, but it was based on my C++ parser
 // so it should have few to no problems.
 // The parser does not support fractions or mixed numbers, though I don't if 
 // support should be added for those or not. 
 // (It will depend on how many problems actually use this)
-// If we do include support we can just use the Numeric validator code instead of Number()
+// If we do include support, we can just use the Numeric validator code instead of Number()
 class ComplexNumber {
 	constructor(str) {
 		this.r = 0;
@@ -122,5 +180,5 @@ class ComplexNumber {
 
 module.exports = {
 	ComplexNumber, randInt, randIntExclude, randI, randIE, neg, addsub,
-	fix, prec, piFracStr, rref
+	fix, prec, piFracStr, rref, matToLatexStr, arrFromLatexStr, randMat
 };

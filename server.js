@@ -48,6 +48,12 @@ http.createServer(function (request, response) {
         response.write(favicon);
         response.end();
     }
+    else if (url === "/test") {
+        response.statusCode = 200;
+        response.end();
+        // insert random (disconnected) code to test here
+
+    }
     else {
         response.statusCode = 404;
         response.end();

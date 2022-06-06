@@ -1,9 +1,10 @@
+// Note to self, pressing Ctrl+R twice will run the program without the debugger (which is faster)
 
 const { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed } = require("./subjects/DiffEq.js");
 const { linAlgProbs, linAlgProbsBySubject, linAlgProbsNamed } = require("./subjects/LinearAlgebra.js");
 const { AnswerType } =  require("./questions.js");
-const { randInt, matToLatexStr } = require("./util.js");
-const { Matrix } = require("ml-matrix");
+const { randInt, matToLatexStr, numericParser } = require("./util.js");
+const { zeros } = require("mathjs");
 
 var problems = {
     "Differential Equations": diffEqProbs,
@@ -56,8 +57,8 @@ var getNewQuestion = function () {
             }
         }
 
-        // TODO: Unhack
-        //randomIndex = 1;
+        // TODO: Unhack  (importance in subject array)
+        randomIndex = 1;
         //console.log(randomIndex);
         topicArray = problems[subject][randomIndex];
     }
@@ -68,13 +69,13 @@ var getNewQuestion = function () {
         topicArray = [problemsNamed[subject][topic]];
     }
     var randomIndex = Math.floor(Math.random() * topicArray.length);
-    // TODO: Unhack
-    //randomIndex = 3;
+    // TODO: Unhack  (position in importance level array)
+    randomIndex = 2;
     //console.log(randomIndex);
     var setArray = topicArray[randomIndex];
     randomIndex = Math.floor(Math.random() * setArray.length);
-    // TODO: Unhack
-    //randomIndex = 1;
+    // TODO: Unhack  (which question set is it [position in low-level topic])
+    randomIndex = 0;
     //console.log(randomIndex);
     currQuestionSet = setArray[randomIndex];
     currQuestion = currQuestionSet.getInstance();
@@ -127,8 +128,10 @@ var getNewQuestion = function () {
                 selectDiv.append($("<br>"));
             }
 
+            // shuffle the options around (biased shuffle, but who cares)
+            var options = currQuestion.options[i].sort(() => Math.random() - 0.5);
             // place the new options in the wrapper
-            for (var option of currQuestion.options[i]) {
+            for (var option of options) {
                 var input = $('<input type="checkbox" name="answer_'+i+'">');
                 input.attr("id", i + "_" + option.value);
                 input.attr("value", option.value);
@@ -234,7 +237,6 @@ $("#answer_input_div").on("keydown", ".answer_input", function (keyEvent) {
 $("#answer_submit").click(function () {
     areAllCorrect = true;
     for (var i = 0; i < currQuestionSet.answerType.length; i++) {
-
         var answer;
         var aType;
         if (Array.isArray(currQuestionSet.answerType[i])) aType = currQuestionSet.answerType[i][1];
@@ -254,13 +256,13 @@ $("#answer_submit").click(function () {
             if (aType.val[0] === undefined) {
                 dims = currQuestion.matrix_dims[i];
             }
-            var answerMat = new Matrix(dims[0], dims[1]);
+            var answerMat = zeros(dims[0], dims[1]);
             answer = [];
             for (var k = 0; k < dims[0]; k++) {
                 answer.push([]);
                 for (var j = 0; j < dims[1]; j++) {
                     var val = $("#matrix_input" + i + "_" + k + "_" + j).val();
-                    answerMat.set(k, j, new Number(val));
+                    answerMat.set([k, j], numericParser(val));
                     answer[k].push(val);
                 }
             }

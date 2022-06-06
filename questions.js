@@ -1,5 +1,6 @@
 
-const { ComplexNumber, arrFromLatexStr } = require("./util.js");
+const { ComplexNumber, arrFromLatexStr, numericParser } = require("./util.js");
+const { size } = require("mathjs");
 
 // Class for a concrete instance of a question and answer
 
@@ -303,12 +304,13 @@ class QuestionClass {
 			else options.push(new Option(this.options[i].value, render(this.parse(this.options[i].display, info))));
 		}
 		for (var i = 0; i < this.matrix_info.length; i++) {
-			if (this.matrix_info[i] == undefined) {
+			if (this.matrix_info[i] === undefined) {
 				matrix_dims.push(undefined);
 			}
 			else {
 				var mat = info.values[this.matrix_info[i]];
-				matrix_dims.push([mat.rows, mat.columns]);
+				var dims = size(mat);
+				matrix_dims.push([dims.get([0]), dims.get([1])]);
 			}
 		}
 
@@ -333,61 +335,37 @@ class AnswerType {
 	static Interval = new AnswerType(7);
 	static Matrix = (r, c) => {
 		if (r === undefined || c === undefined) {
-			return new AnswerType([]);
+			return new AnswerType([], true);
 		}
-		else return new AnswerType([r, c]);
+		else return new AnswerType([r, c], true);
 	}
-	constructor(value) {
+	static Vectors = (rows, num) => {
+
+	}
+	constructor(value, isMat) {
 		this.val = value;
+		// undefined is a falsy value, so isMatrix is false when undefined (this maintains backwards compatibility)
+		this.isMatrix = Boolean(isMat);
 	}
 }
+
 const numericValidator = function (userAnswer, correctAnswer) {
-	// the user's answer in decimal
-	var userAnswerD = Number(userAnswer);
-	if (userAnswer.indexOf("\\frac") !== -1) {
-		var firstPart = userAnswer.slice(0, userAnswer.indexOf("\\frac"));
-		var start1 = userAnswer.indexOf("{");
-		var end1 = userAnswer.indexOf("}");
-		var start2 = userAnswer.indexOf("{", end1 + 1);
-		var end2 = userAnswer.indexOf("}", end1 + 1);
-		var numer = Number(userAnswer.slice(start1 + 1, end1));
-		var denom = Number(userAnswer.slice(start2 + 1, end2));
-		userAnswerD = numer / denom;
-		if (firstPart === "-") {
-			userAnswerD *= -1
-		}
-		else if (firstPart !== "") {
-			if (firstPart[0] === "-") {
-				userAnswerD *= -1;
-			}
-			userAnswerD += Number(firstPart);
-		}
-	}
-	else if (userAnswer.indexOf("/") !== -1) {
-		var index = userAnswer.indexOf("+") !== -1 ? userAnswer.indexOf("+") : userAnswer.lastIndexOf("-");
-		var splitIndex = userAnswer.indexOf("/");
-		var numer = Number(userAnswer.slice(index + 1, splitIndex));
-		var denom = Number(userAnswer.slice(splitIndex + 1));
-		userAnswerD = numer / denom;
-		if (index !== -1) {
-			if (userAnswer.indexOf("-") !== -1) {
-				userAnswerD *= -1;
-			}
-			userAnswerD += Number(userAnswer.slice(0, index));
-		}
-	}
+	// the user's answer could be in decimal, or latex, or a fraction
+	var userAnswerD = numericParser(userAnswer);
 	if (Math.abs(Number(correctAnswer)) > Math.pow(10, 6)) {
-		console.log(userAnswerD + "  " + correctAnswer);
-		console.log(userAnswerD.toPrecision(6) + "  " + Number(correctAnswer).toPrecision(6));
-		return userAnswerD.toPrecision(6) == Number(correctAnswer).toPrecision(6);
+		//console.log(userAnswerD + "  " + correctAnswer);
+		//console.log(userAnswerD.toPrecision(6) + "  " + Number(correctAnswer).toPrecision(6));
+		return userAnswerD.toPrecision(6) === Number(correctAnswer).toPrecision(6);
 	}
 	else {
-		return userAnswerD.toFixed(2) == Number(correctAnswer).toFixed(2);
+		return Math.abs(userAnswerD - correctAnswer) < Math.pow(10, -2);
 	}
 };
-const matrixValidator = function (userArr, correctAnswer, r, c) {
+const matrixValidator = function (userArr, correctAnswer) {
 	// correctAnswer is a matrix formatted as a Latex String, so we have to convert it to an array 
 	var correctArr = arrFromLatexStr(correctAnswer);
+	var r = correctArr.length;
+	var c = correctArr[0].length;
 	for (var i = 0; i < r; i++) {
 		for (var j = 0; j < c; j++) {
 			if (!numericValidator(userArr[i][j], correctArr[i][j])) {
@@ -485,7 +463,7 @@ class QuestionSet {
 					this.validate.push((userAnswer, correctAnswer) => matrixValidator(userAnswer, correctAnswer, aType.val[0], aType.val[1]));
 				}
 				else if (aType !== AnswerType.Other) {
-					this.validate.push(validators[aType]);
+					this.validate.push(validators[aType.val]);
 				}
 				else {
 					throw TypeError("answer_validation can't be undefined when answerType is Other!");
@@ -504,8 +482,8 @@ class QuestionSet {
 	getInstance() {
 		var randomIndex = Math.floor(Math.random() * this.questions.length);
 		// TODO: Unhack
-		//randomIndex = 0;
-		//console.log(randomIndex);
+		//randomIndex = 2;
+		console.log(randomIndex);
 		return this.questions[randomIndex].getInstance();
 	};
 	getHint(i) {

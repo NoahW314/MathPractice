@@ -1,5 +1,4 @@
-
-const { Matrix } = require("ml-matrix");
+const { size, zeros, det, subset, index, range, map, row, deepEqual, concat } = require("mathjs");
 
 // Note that these are both inclusive on both ends
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
@@ -35,44 +34,67 @@ const piFracStr = function (frac) {
 	return fracs[frac];
 }
 
-const rref = function (A, b) {
-	var ans = b.slice();
-	const size = b.length;
-	if (A.length !== size || A[0].length !== size) throw Error("Matrix is of the wrong size!");
-	for (var i = 0; i < size; i++) {
-		if (A[i][i] === 0) throw Error("Zero element in the diagonal of a matrix!");
-	}
-	for (var i = 0; i < size; i++) {
-		// divide through by the diagonal element
-		const diag = A[i][i];
-		for (var j = 0; j < size; j++) {
-			A[i][j] /= diag;
-		}
-		ans[i] /= diag;
-		// then add the needed multiple of this row to every other row
-		for (var j = 0; j < size; j++) {
-			// j is the row that we are adding row i to.
-			if (j !== i) {
-				// we want A[j][i] to be zero, so mult=-A[j][i], that way A[j][i]=mult*1+A[j][i]=0
-				const mult = -A[j][i];
-				for (var k = 0; k < size; k++) {
-					A[j][k] += mult * A[i][k];
-				}
-				ans[j] += mult * ans[i];
+const rref = function (A) {
+	var dims = size(A);
+	var rows = dims.get([0]);
+	var cols = dims.get([1]);
+	var cRow = 0; // current row
+	for (var i = 0; i < cols; i++) {
+		// check if column i has a non-zero entry (on or below the "diagonal")
+		var nonZeroRow = -1;
+		for (var j = cRow; j < rows; j++) {
+			// we need to account for floating point error
+			if (Math.abs(A.get([j, i])) > Math.pow(10, -6)) {
+				nonZeroRow = j;
+				break;
 			}
 		}
+		// this column is all 0, skip it
+		if (nonZeroRow === -1) continue;
+		// move the first row with a non-zero entry in that column to the top
+		if (nonZeroRow !== cRow) {
+			// swap rows cRow and nonZeroRow
+			var tempRow = subset(A, index(cRow, range(0, cols)));
+			A = subset(A, index(cRow, range(0, cols)), 
+					subset(A, index(nonZeroRow, range(0, cols))));
+			A = subset(A, index(nonZeroRow, range(0, cols)), tempRow);
+		}
+		// normalize the (now) first row (that is, row cRow)
+		var diag = A.get([cRow, i]);
+		for (var j = i; j < cols; j++) {
+			A.set([cRow, j], A.get([cRow, j])/diag);
+		}
+		// zero out all rows (at least in this column)
+		for (var j = 0; j < rows; j++) {
+			if (j === cRow) continue;
+			var factor = A.get([j, i]);
+			for (var k = i; k < cols; k++) {
+				var val = A.get([j, k])-factor*A.get([cRow, k]);
+				A.set([j, k], val);
+			}
+		}
+		cRow++;
 	}
-	return ans;
+	
+	return map(A, function (value) {
+		if (Math.abs(value) < Math.pow(10, -6)) {
+			return 0;
+		}
+		else return value;
+	});
 }
 const matToLatexStr = function (A) {
+	var dims = size(A);
+	var rows = dims.get([0]);
+	var cols = dims.get([1]);
 	var str = "\\displaystyle\\left[\\begin{array}";
-	str += "{" + ("c".repeat(A.columns)) + "}\n";
-	for (var i = 0; i < A.rows; i++) {		
-		for (var j = 0; j < A.columns; j++) {
+	str += "{" + ("c".repeat(cols)) + "}\n";
+	for (var i = 0; i < rows; i++) {		
+		for (var j = 0; j < cols; j++) {
 			if (j != 0) {
 				str += " & ";
 			}
-			str += A.get(i, j);
+			str += A.get([i, j]);
 			}
 			str += "\\\\ \n";
 	}
@@ -112,16 +134,88 @@ const randMat = function (r, c, min, max, ...exclude) {
 		cols = randInt(c[0], c[1]);
 	}
 
-	var A = new Matrix(rows, cols);
+	var A = zeros(rows, cols);
 	for (var i = 0; i < rows; i++) {
 		for (var j = 0; j < cols; j++) {
-			A.set(i, j, randIntExclude(min, max, exclude));
+			A.set([i, j], randIntExclude(min, max, exclude));
 		}
 	}
 	return A;
 }
+const isSingular = function (A) {
+	return det(A) === 0;
+}
+const isInconsistent = function (A, b, rows, cols) {
+	var RREF = rref(concat(A, b));
+	var inconsistentRow = zeros(1, cols + 1);
+	inconsistentRow.set([0, cols], 1);
+	for (var i = 0; i < rows; i++) {
+		if (deepEqual(row(RREF, i), inconsistentRow)) {
+			return true;
+		}
+	}
+	return false;
+}
+const hasUniqueSolution = function (A, b, rows, cols) {
+	if (rows < cols) {
+		return false;
+	}
+	var RREF = rref(concat(A, b));
+	for (var i = 0; i < cols; i++) {
+		if (RREF.get([i,i]) !== 1) {
+			return false;
+		}
+	}
+	if (rows !== cols && RREF.get([cols, cols]) === 1) {
+		return false;
+	}
+	return true;
+}
+const hasInfiniteSolutions = function (A, b, rows, cols) {
+	return !isInconsistent(A, b, rows, cols) && !hasUniqueSolution(A, b, rows, cols);
+}
 
-//TODO: This parsing constructor is untested, but it was based on my C++ parser
+
+const numericParser = function (numStr) {
+	var num = Number(numStr);
+	if (numStr.indexOf("\\frac") !== -1) {
+		var firstPart = numStr.slice(0, numStr.indexOf("\\frac"));
+		var start1 = numStr.indexOf("{");
+		var end1 = numStr.indexOf("}");
+		var start2 = numStr.indexOf("{", end1 + 1);
+		var end2 = numStr.indexOf("}", end1 + 1);
+		var numer = Number(numStr.slice(start1 + 1, end1));
+		var denom = Number(numStr.slice(start2 + 1, end2));
+		num = numer / denom;
+		if (firstPart === "-") {
+			num *= -1
+		}
+		else if (firstPart !== "") {
+			if (firstPart[0] === "-") {
+				num *= -1;
+			}
+			num += Number(firstPart);
+		}
+	}
+	else if (numStr.indexOf("/") !== -1) {
+		var index = numStr.indexOf("+") !== -1 ? numStr.indexOf("+") : numStr.lastIndexOf("-");
+		var splitIndex = numStr.indexOf("/");
+		var numer = Number(numStr.slice(index + 1, splitIndex));
+		var denom = Number(numStr.slice(splitIndex + 1));
+		num = numer / denom;
+		if (index !== -1) {
+			if (numStr.indexOf("-") !== -1) {
+				num *= -1;
+			}
+			num += Number(numStr.slice(0, index));
+		}
+	}
+	return num;
+}
+
+//TODO: We don't this anymore (probably) because we have complex number support through math.js 
+// (but we should still wait until we actually try to do stuff with complex numbers before removing it)
+// This parsing constructor is untested, but it was based on my C++ parser
 // so it should have few to no problems.
 // The parser does not support fractions or mixed numbers, though I don't if 
 // support should be added for those or not. 
@@ -180,5 +274,7 @@ class ComplexNumber {
 
 module.exports = {
 	ComplexNumber, randInt, randIntExclude, randI, randIE, neg, addsub,
-	fix, prec, piFracStr, rref, matToLatexStr, arrFromLatexStr, randMat
+	fix, prec, piFracStr, rref, matToLatexStr, arrFromLatexStr, randMat,
+	isSingular, isInconsistent, hasUniqueSolution, hasInfiniteSolutions,
+	numericParser
 };

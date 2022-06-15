@@ -1,5 +1,5 @@
 
-const { ComplexNumber, arrFromLatexStr, numericParser } = require("./util.js");
+const { ComplexNumber, arrFromLatexStr, numericParser, vectSetFromLatexStr } = require("./util.js");
 const { size } = require("mathjs");
 
 // Class for a concrete instance of a question and answer
@@ -9,7 +9,7 @@ const { size } = require("mathjs");
 // Anything in math mode will be rendered in displaystyle, but inline.
 // Remember to escape slashes in the string
 class Question {
-	constructor(text, answer, answer_explanation, options, matrix_dims) {
+	constructor(text, answer, answer_explanation, options, matrix_dims, info) {
 		// The actual text of the question
 		this.text = render(text);
 		// The answer that will be checked against the user input.
@@ -31,12 +31,11 @@ class Question {
 		// If this is a matrix question, then these are the dimensions of the matrix
 		// otherwise, it is undefined
 		this.matrix_dims = matrix_dims;
+		// extra info that gets passed to custom validators
+		this.info = info;
 	};
 	getOptions(i) {
 		return this.options[i];
-	};
-	getDims(i) {
-		return this.matrix_dims[i];
 	};
 };
 
@@ -79,7 +78,7 @@ class Option {
 // same form, but each individual question will have different values for constants
 // These values will be represented by variables denoted by a # on one side and a space on the other side
 class QuestionClass {
-	constructor(text, answer_form, answer_explanation_form, replacements, options, matrix_info) {
+	constructor(text, answer_form, answer_explanation_form, replacements, options, matrix_info, extra_info) {
 		// The actual text of the question
 		this.text = text;
 		// The general form that the answer takes
@@ -120,6 +119,11 @@ class QuestionClass {
 		//  otherwise, it is undefined
 		if (!Array.isArray(matrix_info)) this.matrix_info = [matrix_info]; 
 		else this.matrix_info = matrix_info;
+		// If desired, this is a string or an array of string in the info object whose
+		// values will be passed to the validator (this provides extra information for custom validators)
+		// all values will be passed to all question parts
+		if (!Array.isArray(extra_info)) this.extra_info = [extra_info];
+		else this.extra_info = extra_info;
 	};
 	handleNormal(char, new_text, info) {
 		if (char === "#") {
@@ -259,7 +263,7 @@ class QuestionClass {
 		}
 		return result;
 	};
-	getInstance() {
+	getInstance(answerType) {
 		var info = {
 			get_variable_name: false,
 			in_func: false,
@@ -278,6 +282,7 @@ class QuestionClass {
 		var answer_explanation = [];
 		var options = [];
 		var matrix_dims = [];
+		var extra_info = [];
 		
 		for (var i = 0; i < this.answer_form.length; i++) {
 			if (Array.isArray(this.answer_form[i])) {
@@ -308,15 +313,31 @@ class QuestionClass {
 				matrix_dims.push(undefined);
 			}
 			else {
-				var mat = info.values[this.matrix_info[i]];
-				var dims = size(mat);
-				matrix_dims.push([dims.get([0]), dims.get([1])]);
+				var data = info.values[this.matrix_info[i]];
+				var aType = answerType[i];
+				if (Array.isArray(aType)) {
+					aType = aType[1];
+				}
+				// single matrix
+				if (aType === AnswerType.Matrix) {
+					var dims = size(data);
+					matrix_dims.push([dims.get([0]), dims.get([1])]);
+				}
+				// (column) vector set
+				else {
+					var rows = size(data[0]).get([0]);
+					matrix_dims.push([rows, data.length]);
+				}
+				
 			}
+		}
+		for (var i = 0; i < this.extra_info.length; i++) {
+			extra_info.push(info.values[this.extra_info[i]]);
 		}
 
 
 		// return a ready-to-use Question instance
-		return new Question(new_text, answer, answer_explanation, options, matrix_dims);
+		return new Question(new_text, answer, answer_explanation, options, matrix_dims, extra_info);
 	};
 };
 
@@ -333,19 +354,14 @@ class AnswerType {
 	static MultipleChoice = new AnswerType(5);
 	static SelectAll = new AnswerType(6);
 	static Interval = new AnswerType(7);
-	static Matrix = (r, c) => {
-		if (r === undefined || c === undefined) {
-			return new AnswerType([], true);
-		}
-		else return new AnswerType([r, c], true);
-	}
-	static Vectors = (rows, num) => {
-
-	}
-	constructor(value, isMat) {
-		this.val = value;
-		// undefined is a falsy value, so isMatrix is false when undefined (this maintains backwards compatibility)
-		this.isMatrix = Boolean(isMat);
+	static Matrix = new AnswerType(8);
+	static Vectors = new AnswerType(9);
+	constructor(type) {
+		// type is the general type of the answer, (e.x. numeric, multiple choice, matrix)
+		this.type = type;
+		// value is any specific information about this particular answer (e.x. the dimensions of a matrix or vector)
+		// this will be set by the question class when it is instaniatated.
+		this.value = undefined;
 	}
 }
 
@@ -353,12 +369,10 @@ const numericValidator = function (userAnswer, correctAnswer) {
 	// the user's answer could be in decimal, or latex, or a fraction
 	var userAnswerD = numericParser(userAnswer);
 	if (Math.abs(Number(correctAnswer)) > Math.pow(10, 6)) {
-		//console.log(userAnswerD + "  " + correctAnswer);
-		//console.log(userAnswerD.toPrecision(6) + "  " + Number(correctAnswer).toPrecision(6));
 		return userAnswerD.toPrecision(6) === Number(correctAnswer).toPrecision(6);
 	}
 	else {
-		return Math.abs(userAnswerD - correctAnswer) < Math.pow(10, -2);
+		return Math.abs(userAnswerD - correctAnswer) < Math.pow(10, -2)/2;
 	}
 };
 const matrixValidator = function (userArr, correctAnswer) {
@@ -375,6 +389,31 @@ const matrixValidator = function (userArr, correctAnswer) {
 	}
 	return true;
 };
+const vectorSetValidator = function (userArr, correctAnswer) {
+	var correctArr = vectSetFromLatexStr(correctAnswer);
+	var n = correctArr.length;
+	var r = correctArr[0].length;
+	// ensure that each vector in correctArr is in userArr
+	for (var i = 0; i < n; i++) {
+		var isInUserArr = false;
+		for (var j = 0; j < n; j++) {
+			var areVectorsEqual = true;
+			// compare the vectors element-by-element
+			for (var k = 0; k < r; k++) {
+				if (!numericValidator(userArr[j][k], correctArr[i][k][0])) {
+					areVectorsEqual = false;
+					break;
+				}
+			}
+			if (areVectorsEqual) {
+				isInUserArr = true;
+				break;
+			}
+		}
+		if (!isInUserArr) return false; 
+	}
+	return true;
+}
 // When possible, maps the answer type to a function which can validate an answer of that type
 const validators = {
 	1: numericValidator,
@@ -421,7 +460,9 @@ const validators = {
 
 		// If we pass all four checks, then the intervals must be the same
 		return true;
-	}
+	},
+	8: matrixValidator,
+	9: vectorSetValidator
 };
 const hints = {
 	1: "A decimal like 3, -2.2, or 2e-4 <br>" +
@@ -458,12 +499,8 @@ class QuestionSet {
 				if (answer_validation !== undefined && answer_validation[i] !== undefined) {
 					this.validate.push(answer_validation[i]);
 				}
-				// special case for matrix answers
-				else if (Array.isArray(aType.val)) {
-					this.validate.push((userAnswer, correctAnswer) => matrixValidator(userAnswer, correctAnswer, aType.val[0], aType.val[1]));
-				}
 				else if (aType !== AnswerType.Other) {
-					this.validate.push(validators[aType.val]);
+					this.validate.push(validators[aType.type]);
 				}
 				else {
 					throw TypeError("answer_validation can't be undefined when answerType is Other!");
@@ -482,9 +519,9 @@ class QuestionSet {
 	getInstance() {
 		var randomIndex = Math.floor(Math.random() * this.questions.length);
 		// TODO: Unhack
-		//randomIndex = 2;
+		//randomIndex = 0;
 		console.log(randomIndex);
-		return this.questions[randomIndex].getInstance();
+		return this.questions[randomIndex].getInstance(this.answerType);
 	};
 	getHint(i) {
 		if (i < 0 || i >= this.answerType.length) {
@@ -499,4 +536,4 @@ class QuestionSet {
 	};
 };
 
-module.exports = { QuestionSet, QuestionClass, Question, AnswerType, Option };
+module.exports = { QuestionSet, QuestionClass, Question, AnswerType, Option, numericValidator };

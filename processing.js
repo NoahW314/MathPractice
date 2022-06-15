@@ -3,7 +3,7 @@
 const { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed } = require("./subjects/DiffEq.js");
 const { linAlgProbs, linAlgProbsBySubject, linAlgProbsNamed } = require("./subjects/LinearAlgebra.js");
 const { AnswerType } =  require("./questions.js");
-const { randInt, matToLatexStr, numericParser } = require("./util.js");
+const { randInt, matToLatexStr, vectSetToLatexStr, numericParser } = require("./util.js");
 const { zeros } = require("mathjs");
 
 var problems = {
@@ -25,10 +25,10 @@ var subject = "";
 var currQuestion;
 var currQuestionSet;
 
-var evaluateAnswerPart = function (answerPart, index) {
+var evaluateAnswerPart = function (answerPart, index, prevAnswers) {
     console.log(answerPart);
     console.log(currQuestion.answer[index]);
-	return currQuestionSet.validate[index](answerPart, currQuestion.answer[index]);
+	return currQuestionSet.validate[index](answerPart, currQuestion.answer[index], prevAnswers, currQuestion.info);
 };
 
 var getAnswerDiv = function () {
@@ -58,7 +58,7 @@ var getNewQuestion = function () {
         }
 
         // TODO: Unhack  (importance in subject array)
-        randomIndex = 1;
+        randomIndex = 3;
         //console.log(randomIndex);
         topicArray = problems[subject][randomIndex];
     }
@@ -70,7 +70,7 @@ var getNewQuestion = function () {
     }
     var randomIndex = Math.floor(Math.random() * topicArray.length);
     // TODO: Unhack  (position in importance level array)
-    randomIndex = 2;
+    randomIndex = 4;
     //console.log(randomIndex);
     var setArray = topicArray[randomIndex];
     randomIndex = Math.floor(Math.random() * setArray.length);
@@ -147,13 +147,10 @@ var getNewQuestion = function () {
             // add the wrapper to the main screen
             answerInputDiv.append(selectDiv);
         }
-        // special case for matrices
-        else if (Array.isArray(aType.val)) {
-            // handling the dimensions of a variable matrix size is weird.
-            var dims = aType.val;
-            if (aType.val[0] === undefined) {
-                dims = currQuestion.matrix_dims[i];
-            }
+        else if (aType === AnswerType.Matrix) {
+            // get the dimensions of the matrix
+            var rows = currQuestion.matrix_dims[i][0];
+            var cols = currQuestion.matrix_dims[i][1];
             // create the wrapper for matrix boxes
             var matrixDiv = $("<div class='answer_input' id='matrix_div_thing_input'></div>");
             if (answerText === "Answer") {
@@ -163,13 +160,36 @@ var getNewQuestion = function () {
 
             
             // set up the input boxes for the matrix elements
-            for (var k = 0; k < dims[0]; k++) {
-                for (var j = 0; j < dims[1]; j++) {
+            for (var k = 0; k < rows; k++) {
+                for (var j = 0; j < cols; j++) {
                     matrixDiv.append($("<input type='text' class='answer_matrix_input' id='matrix_input"+i+"_"+k+"_"+j+"'>"));
                 }
                 matrixDiv.append($("<br>"));
             }
             answerInputDiv.append(matrixDiv);
+        }
+        else if (aType === AnswerType.Vectors) {
+            // get the "dimensions" of the vector set
+            var dims = currQuestion.matrix_dims[i];
+            var rows = dims[0];
+            var num = dims[1]; 
+            
+            // create the wrapper for vector boxes
+            var setDiv = $("<div class='answer_input' id='vector_div_thing_input'></div>");
+            if (answerText === "Answer") {
+                answerText = "Vector Set: ";
+            }
+            setDiv.append($("<p>" + answerText + "</p>"));
+
+            for (var j = 0; j < num; j++) {
+                var vectDiv = $("<div class='vect_input'></div>");
+                for (var k = 0; k < rows; k++) {
+                    vectDiv.append($("<input type='text' class='answer_vector_input' id='vector_input" + i + "_" + j + "_" + k + "'>"));
+                    vectDiv.append($("<br>"));
+                }
+                setDiv.append(vectDiv);
+            }
+            answerInputDiv.append(setDiv);
         }
         else {
             // create the wrapper for the input element
@@ -236,6 +256,7 @@ $("#answer_input_div").on("keydown", ".answer_input", function (keyEvent) {
 
 $("#answer_submit").click(function () {
     areAllCorrect = true;
+    var prevAnswers = [];
     for (var i = 0; i < currQuestionSet.answerType.length; i++) {
         var answer;
         var aType;
@@ -250,17 +271,14 @@ $("#answer_submit").click(function () {
                 return $(this).val();
             }).get();
         }
-        // Matrix Answer Type
-        else if (Array.isArray(aType.val)) {
-            var dims = aType.val;
-            if (aType.val[0] === undefined) {
-                dims = currQuestion.matrix_dims[i];
-            }
-            var answerMat = zeros(dims[0], dims[1]);
+        else if (aType === AnswerType.Matrix) {
+            var rows = currQuestion.matrix_dims[i][0];
+            var cols = currQuestion.matrix_dims[i][1];
+            var answerMat = zeros(rows, cols);
             answer = [];
-            for (var k = 0; k < dims[0]; k++) {
+            for (var k = 0; k < rows; k++) {
                 answer.push([]);
-                for (var j = 0; j < dims[1]; j++) {
+                for (var j = 0; j < cols; j++) {
                     var val = $("#matrix_input" + i + "_" + k + "_" + j).val();
                     answerMat.set([k, j], numericParser(val));
                     answer[k].push(val);
@@ -273,6 +291,32 @@ $("#answer_submit").click(function () {
             } catch (err) {
                 if (err instanceof katex.ParseError) {
                     katex.render(answerMat, renderedAnswerInput, { throwOnError: false });
+                    return;
+                }
+                else { throw err; }
+            }
+        }
+        else if (aType === AnswerType.Vectors) {
+            var rows = currQuestion.matrix_dims[i][0];
+            var num = currQuestion.matrix_dims[i][1];
+            var answerVects = [];
+            answer = [];
+            for (var k = 0; k < num; k++) {
+                answerVects.push(zeros(rows, 1));
+                answer.push([]);
+                for (var j = 0; j < rows; j++) {
+                    var val = $("#vector_input" + i + "_" + k + "_" + j).val();
+                    answerVects[k].set([j, 0], numericParser(val));
+                    answer[k].push(val);
+                }
+            }
+            var renderedAnswerInput = answerInputDivs[i].find(".rendered_answer_input").get(0);
+            var latexVectString = vectSetToLatexStr(answerVects);
+            try {
+                katex.render(latexVectString, renderedAnswerInput);
+            } catch (err) {
+                if (err instanceof katex.ParseError) {
+                    katex.render(answerVects, renderedAnswerInput, { throwOnError: false });
                     return;
                 }
                 else { throw err; }
@@ -293,8 +337,9 @@ $("#answer_submit").click(function () {
             }
         }
 
-        var isCorrect = evaluateAnswerPart(answer, i);
+        var isCorrect = evaluateAnswerPart(answer, i, prevAnswers);
         if (!isCorrect) areAllCorrect = false;
+        prevAnswers.push(answer);
 
         answerInputDivs[i].find(".answer_status").show();
         var answerStatusText = answerInputDivs[i].find(".answer_status_text");

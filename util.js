@@ -1,4 +1,5 @@
-const { size, zeros, det, subset, index, range, map, row, deepEqual, concat } = require("mathjs");
+const { size, zeros, det, subset, index, range, map, row, deepEqual,
+	concat, clone } = require("mathjs");
 
 // Note that these are both inclusive on both ends
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
@@ -34,7 +35,8 @@ const piFracStr = function (frac) {
 	return fracs[frac];
 }
 
-const rref = function (A) {
+const rref = function (mat) {
+	var A = clone(mat);
 	var dims = size(A);
 	var rows = dims.get([0]);
 	var cols = dims.get([1]);
@@ -101,6 +103,16 @@ const matToLatexStr = function (A) {
 	str += "\\end{array}\\right]";
 	return str;
 }
+const vectSetToLatexStr = function (V) {
+	var str = "";
+	for (var i = 0; i < V.length; i++) {
+		if (i !== 0) {
+			str += ",";
+		}
+		str += matToLatexStr(V[i]);
+	}
+	return str;
+}
 /*
 \displaystyle\left[\begin{array}{cccc}
 -7 & -3 & -1 & -9\\
@@ -122,6 +134,14 @@ const arrFromLatexStr = function (str) {
 	}
 
 	return arr;
+}
+const vectSetFromLatexStr = function (str) {
+	var V = [];
+	var strArr = str.split("\\displaystyle");
+	for (var i = 1; i < strArr.length; i++) {
+		V.push(arrFromLatexStr(strArr[i]));
+	}
+	return V;
 }
 // an array for r or c specifies a range for them
 const randMat = function (r, c, min, max, ...exclude) {
@@ -175,8 +195,10 @@ const hasInfiniteSolutions = function (A, b, rows, cols) {
 	return !isInconsistent(A, b, rows, cols) && !hasUniqueSolution(A, b, rows, cols);
 }
 
-
 const numericParser = function (numStr) {
+	if (typeof numStr === "number") {
+		return numStr;
+	}
 	var num = Number(numStr);
 	if (numStr.indexOf("\\frac") !== -1) {
 		var firstPart = numStr.slice(0, numStr.indexOf("\\frac"));
@@ -276,5 +298,5 @@ module.exports = {
 	ComplexNumber, randInt, randIntExclude, randI, randIE, neg, addsub,
 	fix, prec, piFracStr, rref, matToLatexStr, arrFromLatexStr, randMat,
 	isSingular, isInconsistent, hasUniqueSolution, hasInfiniteSolutions,
-	numericParser
+	numericParser, vectSetToLatexStr, vectSetFromLatexStr
 };

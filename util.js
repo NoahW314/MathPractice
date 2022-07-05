@@ -1,5 +1,5 @@
 const { size, zeros, det, subset, index, range, map, row, deepEqual,
-	concat, clone } = require("mathjs");
+	concat, clone, typeOf } = require("mathjs");
 
 // Note that these are both inclusive on both ends
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
@@ -35,7 +35,11 @@ const piFracStr = function (frac) {
 	return fracs[frac];
 }
 
-const rref = function (mat) {
+const rref = function (mat, err) {
+	var error = Math.pow(10, -6);
+	if (err !== undefined) {
+		error = err;
+	}
 	var A = clone(mat);
 	var dims = size(A);
 	var rows = dims.get([0]);
@@ -45,8 +49,8 @@ const rref = function (mat) {
 		// check if column i has a non-zero entry (on or below the "diagonal")
 		var nonZeroRow = -1;
 		for (var j = cRow; j < rows; j++) {
-			// we need to account for floating point error
-			if (Math.abs(A.get([j, i])) > Math.pow(10, -6)) {
+			// we need to account for floating point error (or user input rounding)
+			if (Math.abs(A.get([j, i])) > error) {
 				nonZeroRow = j;
 				break;
 			}
@@ -79,7 +83,7 @@ const rref = function (mat) {
 	}
 	
 	return map(A, function (value) {
-		if (Math.abs(value) < Math.pow(10, -6)) {
+		if (Math.abs(value) < error) {
 			return 0;
 		}
 		else return value;
@@ -165,8 +169,8 @@ const randMat = function (r, c, min, max, ...exclude) {
 const isSingular = function (A) {
 	return det(A) === 0;
 }
-const isInconsistent = function (A, b, rows, cols) {
-	var RREF = rref(concat(A, b));
+const isInconsistent = function (A, b, rows, cols, error) {
+	var RREF = rref(concat(A, b), error);
 	var inconsistentRow = zeros(1, cols + 1);
 	inconsistentRow.set([0, cols], 1);
 	for (var i = 0; i < rows; i++) {

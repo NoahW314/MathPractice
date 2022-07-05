@@ -58,7 +58,7 @@ var getNewQuestion = function () {
         }
 
         // TODO: Unhack  (importance in subject array)
-        randomIndex = 3;
+        //randomIndex = 1;
         //console.log(randomIndex);
         topicArray = problems[subject][randomIndex];
     }
@@ -70,12 +70,12 @@ var getNewQuestion = function () {
     }
     var randomIndex = Math.floor(Math.random() * topicArray.length);
     // TODO: Unhack  (position in importance level array)
-    randomIndex = 4;
+    //randomIndex = topicArray.length-1;
     //console.log(randomIndex);
     var setArray = topicArray[randomIndex];
     randomIndex = Math.floor(Math.random() * setArray.length);
     // TODO: Unhack  (which question set is it [position in low-level topic])
-    randomIndex = 0;
+    //randomIndex = 0;
     //console.log(randomIndex);
     currQuestionSet = setArray[randomIndex];
     currQuestion = currQuestionSet.getInstance();
@@ -179,7 +179,14 @@ var getNewQuestion = function () {
             if (answerText === "Answer") {
                 answerText = "Vector Set: ";
             }
-            setDiv.append($("<p>" + answerText + "</p>"));
+            setDiv.append($('<span>' + answerText + '</span>'));
+            if (currQuestionSet.getHint(i) !== undefined) {
+                setDiv.append($('<span class="answer_type_hint" id="answer_hint_' + i + '">\
+                                <span class="answer_type_text" hidden></span>\
+                                <i class="answer_type_icon fas fa-info-circle" style="color:gray"></i>\
+                               </span>'));
+            }
+            setDiv.append($('<br>'));
 
             for (var j = 0; j < num; j++) {
                 var vectDiv = $("<div class='vect_input'></div>");
@@ -197,7 +204,7 @@ var getNewQuestion = function () {
             // add the inards of the input stuff
             inputDiv.append($("<label for='answer_input_"+i+"'>"+answerText+":</label>"));
             inputDiv.append($("<input type='text' class='answer_input_input' id='answer_input_" + i + "'>"));
-            inputDiv.append($('<span class="answer_type_hint">\
+            inputDiv.append($('<span class="answer_type_hint" id="answer_hint_'+i+'">\
                                 <span class="answer_type_text" hidden></span>\
                                 <i class="answer_type_icon fas fa-info-circle" style="color:gray"></i>\
                                </span>\
@@ -399,7 +406,7 @@ $("#subject_select").change(function () {
 
 $("#answer_input_div").on("mouseenter", ".answer_type_hint", function () {
     var typeText = $(this).parent().find(".answer_type_text");
-    var id = $(this).parent().find(".answer_input_input").prop("id");
+    var id = $(this).prop("id");
     var index = id[id.length - 1];
     typeText.html(currQuestionSet.getHint(index));
     typeText.show();

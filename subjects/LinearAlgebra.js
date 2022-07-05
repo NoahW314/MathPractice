@@ -1,11 +1,12 @@
 
-const { AnswerType, QuestionSet, QuestionClass, Option, numericValidator } = require("../questions.js"); 
+const { AnswerType, QuestionSet, QuestionClass, Option, numericValidator, vectorSetValidator, matrixValidator } = require("../questions.js"); 
 const { matToLatexStr, randMat, isSingular, randInt, addsub,
 	rref, isInconsistent, hasUniqueSolution, hasInfiniteSolutions,
-	randIntExclude, vectSetToLatexStr, arrFromLatexStr, numericParser } = require("../util.js");
+	randIntExclude, vectSetToLatexStr, numericParser, randI } = require("../util.js");
 const { add, transpose, multiply, det, inv, subset, index, range,
 	zeros, concat, row, column, deepEqual, size, matrix,
-	fraction, squeeze, reshape, clone } = require("mathjs");
+	fraction, squeeze, reshape, clone, subtract, identity, diag,
+	sqrt, dot, divide } = require("mathjs");
 
 //----------------------------------------------------------------------------
 // Linear Systems of Equations
@@ -55,7 +56,6 @@ const matrixArithmetic = [new QuestionSet([
 				"3": (dims) => randMat(dims[0], dims[1], -9, 9), "4": (A) => matToLatexStr(A),
 				"5": (A, B) => transpose(add(A, B))
 			}, undefined, "3"),
-		// TODO: conjugate-transposition?
 		// multiplication
 		new QuestionClass("Compute $A*B$, where $A=#4(#2(#1))$ and $B=#4(#3(#1))$", "#4(#5(#2, #3))", "",
 			{
@@ -444,13 +444,13 @@ const vectSetToMat = function (S) {
 	return transpose(matrix(arr));
 }
 // are the columns of A linearly independent
-const areColsLI = function (A, rows, cols) {
+const areColsLI = function (A, rows, cols, err) {
 	// this happens precisely when every column of rref(A) contains a leading 1
 	// (i.e. the diagonal is all 1s and rows >= cols)
 	if (rows < cols) {
 		return false;
 	}
-	var RREF = rref(A);
+	var RREF = rref(A, err);
 	for (var i = 0; i < cols; i++) {
 		if (RREF.get([i, i]) !== 1) {
 			return false;
@@ -776,7 +776,7 @@ const rowSpaceSpan = [
 			},
 			[[], [], ["Yes", "No"]], ["5", undefined, undefined]),
 		// not full rank
-		new QuestionClass("Find a #1  for the column space of the matrix $A=#3(#2)$ and determine the rank of the matrix.",
+		new QuestionClass("Find a #1  for the row space of the matrix $A=#3(#2)$ and determine the rank of the matrix.",
 			["#4(#5(#2))", "#6(#5)", "No"], ["", "", ""],
 			{
 				"1": mssBasis, "3": matToLatexStr, "4": vectSetToLatexStr, "6": (S) => S.length,
@@ -1286,27 +1286,766 @@ const changeBaseAndTransform = [new QuestionSet([
 ], AnswerType.Matrix)];
 
 //----------------------------------------------------------------------------
-// Eigenvalues
+// Determinants and Eigenvalues
 //----------------------------------------------------------------------------
+
+const computeDeterminant = [
+	new QuestionSet([
+		new QuestionClass("Let $A=#3(#1)$ be a matrix.  Compute $\\text{Det}(A)$ using the cofactor expansion", "#2(#1)", "",
+			{
+				"1": () => {
+					var size = randInt(2, 4);
+					return randMat(size, size, -9, 9);
+				}, "2": (A) => det(A), "3": matToLatexStr
+			}),
+		new QuestionClass("Let $A=#3(#1)$ be a matrix.  Compute $\\text{Det}(A)$ by using row operations to convert it to an upper triangular matrix", "#2(#1)", "",
+			{
+				"1": () => {
+					var size = randInt(2, 4);
+					return randMat(size, size, -9, 9);
+				}, "2": (A) => det(A), "3": matToLatexStr
+			}),
+	], AnswerType.Numeric)
+];
+
+const correctDP = function (...exclude) {
+	var arr = [
+		"$\\text{Det}(A*B)=\\text{Det}(A)\\cdot\\text{Det}(B)$",
+		"A matrix $A$ is singular iff $\\text{Det}(A)=0$.",
+		"If $A$ is a triangular matrix, then the determinant is the product of the diagonal entires.",
+		"$\\text{Det}(A)=\\text{Det}(A^T)$",
+		"$\\text{Det}((A*B)^T)=\\text{Det}(A^T)\\text{Det}(B)$",
+		"$\\text{Det}(A*(B*C))=\\text{Det}(C)\\cdot\\text{Det}(A)\\cdot\\text{Det}(B)$",
+		"$\\text{Det}(A*B)=\\text{Det}(B*A)$"
+	];
+	var statement;
+	do {
+		statement = arr[randInt(0, arr.length - 1)];
+	} while (exclude.indexOf(statement) !== -1);
+	return statement;
+}
+const incorrectDP = function (...exclude) {
+	var arr = [
+		"$\\text{Det}(A+B)=\\text{Det}(A)+\\text{Det}(B)$",
+		"$\\text{Det}(\\alpha A)=\\alpha\\text{Det}(A)$",
+		"A matrix $A$ is invertible iff $\\text{Det}(A)=0$"
+	];
+	var statement;
+	do {
+		statement = arr[randInt(0, arr.length - 1)];
+	} while (exclude.indexOf(statement) !== -1);
+	return statement;
+}
+const determinantProperties = [new QuestionSet([
+	// 2 correct
+	new QuestionClass("Select all properties which are true", ["1", "2"], " ",
+		{ "1": correctDP, "2": (a) => correctDP(a), "3": incorrectDP },
+		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "#3 ")]),
+	// 3 correct
+	new QuestionClass("Select all properties which are true", ["1", "2", "3"], " ",
+		{ "1": correctDP, "2": (a) => correctDP(a), "3": (a, b) => correctDP(a, b) },
+		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "#3(#1, #2)")])
+], AnswerType.SelectAll)];
+
+const getNullSpaceBasis = function (A) {
+	var RREF = rref(A);
+	var basis = [];
+	var rowsDown = 0;
+	var dims = size(A);
+	var rows = dims.get([0]); var cols = dims.get([1]);
+	for (var i = 0; i < cols; i++) {
+		var hasLeadingOne = (rowsDown < rows && RREF.get([rowsDown, i]) === 1);
+		// if there is not a leading one in this column, then this is a free variable
+		// so it is included in our basis
+		if (!hasLeadingOne) {
+			var arr = [];
+			for (var j = 0; j < cols; j++) {
+				if (j === i) {
+					arr.push([1]);
+				}
+				else if (j >= rows) {
+					arr.push([0]);
+				}
+				else {
+					arr.push([-RREF.get([j, i])]);
+				}
+			}
+			basis.push(matrix(arr));
+		}
+		else {
+			rowsDown++;
+		}
+	}
+	return basis;
+}
+// structure of return [areReal, vals, spaceDimsArray, spaceBases] last item only if not 2 eigenvalues
+const get2x2Eigens = function (A) {
+	var a = A.get([0, 0]); var b = A.get([0, 1]);
+	var c = A.get([1, 0]); var d = A.get([1, 1]);
+	var D = a * d - b * c;
+	if (a + d === 2 * Math.sqrt(D) || a + d === -2 * Math.sqrt(D)) {
+		// single real repeated
+		var val = (a + d) / 2;
+		// get the basis for the eigenspace (i.e. the nullspace of A-lI)
+		var AlI = subtract(A, multiply(val, identity(2)));
+		var RREF = rref(AlI);
+		var basis = [];
+		if (RREF.get([0, 0]) === 1) {
+			basis = [[-RREF.get([0, 1])], [1]];
+		}
+		else {// RREF.get([0,0]) === 0
+			basis = [[1], [0]];
+		}
+		return [true, [matrix([[val]])], [1], [matrix(basis)]];
+	}
+	else if ((a + d) * (a + d) > 4 * D) {
+		// two real eigenvalues
+		var val1 = ((a + d) + Math.sqrt((a + d) * (a + d) - 4 * D)) / 2;
+		var val2 = ((a + d) - Math.sqrt((a + d) * (a + d) - 4 * D)) / 2;
+		// get the bases for the eigenspaces (i.e. the nullspace of A-lI)
+		var AlI1 = subtract(A, multiply(val1, identity(2)));
+		var RREF1 = rref(AlI1);
+		var basis1 = [];
+		if (RREF1.get([0, 0]) === 1) {
+			basis1 = [[-RREF1.get([0, 1])], [1]];
+		}
+		else {// RREF.get([0,0]) === 0
+			basis1 = [[1], [0]];
+		}
+		// get the basis for the eigenspace (i.e. the nullspace of A-lI)
+		var AlI2 = subtract(A, multiply(val2, identity(2)));
+		var RREF2 = rref(AlI2);
+		var basis2 = [];
+		if (RREF2.get([0, 0]) === 1) {
+			basis2 = [[-RREF2.get([0, 1])], [1]];
+		}
+		else {// RREF.get([0,0]) === 0
+			basis2 = [[1], [0]];
+		}
+		return [true, [matrix([[val1]]), matrix([[val2]])], [1, 1], [[matrix(basis1)], [matrix(basis2)]]];
+	}
+	else {
+		return [false, matrix([[undefined], [undefined]]), [1, 1]];
+	}
+}
+// structure of return [areReal, vals, spaceDimsArray, spaceBases] last item only if not 3 eigenvalues
+const get3x3Eigens = function (A) {
+	var a = A.get([0, 0]); var b = A.get([0, 1]); var c = A.get([0, 2]);
+	var d = A.get([1, 0]); var e = A.get([1, 1]); var f = A.get([1, 2]);
+	var g = A.get([2, 0]); var h = A.get([2, 1]); var i = A.get([2, 2]);
+	var x = (a + e + i) / 3;
+	var x2 = (a + e + i - 1) / 2;
+	var l2Term = a + e + i;
+	var lTerm = f * h + b * d + c * g - a * i - a * e - e * i;
+	var constTerm = a * e * i + b * f * g + c * d * h - a * f * h - b * d * i - c * g * e;
+	if (lTerm === -3 * x * x && constTerm === x * x * x) {
+		// 1 real thrice repeated eigenvalue (namely x)
+		var AlI = subtract(A, multiply(x, identity(3)));
+		var basis = getNullSpaceBasis(AlI);
+		return [true, [matrix([[x]])], [basis.length], basis];
+	}
+	else if (l2Term+lTerm+constTerm === 1) {
+		// 1 is an eigenvalue, so we can factor it out (hopefully easily) and reduce it to a quadractic
+		var qB = lTerm + constTerm;
+		var qC = constTerm;
+		// the b^2-4ac term in the quadractic formula
+		var qDet = qB * qB - 4 * qC;
+		// three cases, repeated real, 2 distinct real, 2 complex
+		if (qDet === 0) {
+			var val = -qB / 2;
+			var AlI1 = subtract(A, identity(3));
+			var basis1 = getNullSpaceBasis(AlI1);
+			var AlI2 = subtract(A, multiply(val, identity(3)));
+			var basis2 = getNullSpaceBasis(AlI2);
+			return [true, [matrix([[1]]), matrix([[val]])], [basis1.length, basis2.length], [basis1, basis2]];
+		}
+		else if (qDet > 0) {
+			var val2 = (-qB + Math.sqrt(qDet)) / 2;
+			var val3 = (-qB - Math.sqrt(qDet)) / 2;
+			var AlI1 = subtract(A, identity(3));
+			var basis1 = getNullSpaceBasis(AlI1);
+			var AlI2 = subtract(A, multiply(val2, identity(3)));
+			var basis2 = getNullSpaceBasis(AlI2);
+			var AlI3 = subtract(A, multiply(val3, identity(3)));
+			var basis3 = getNullSpaceBasis(AlI3);
+			return [true, [matrix([[1]]), matrix([[val2]]), matrix([[val3]])], [1, 1, 1], [basis1, basis2, basis3]];
+		}
+	}
+	// the false here, doesn't really mean that the eigenvalues are complex, just that
+	// we don't care about them.
+	return [false, [undefined, undefined, undefined], [3]]
+}
+const eigenSpaceValidator = function (userArr, correctAnswer, prevAnswers, info) {
+	// ignore correct answer
+	// first we need to find which eigenvalue the user entered for this part
+	var eigenSpaceNum = prevAnswers.length - 1;
+	var userEigenValue = prevAnswers[0][eigenSpaceNum];
+	// now we find this value in our list of eigenvalues
+	var eigenValues = info[0][1][1];
+	var eigenValueNum = -1;
+	for (var i = 0; i < eigenValues.length; i++) {
+		if (numericValidator(userEigenValue, eigenValues[i].get([0,0]))) {
+			eigenValueNum = i;
+			break;
+		}
+	}
+	// compare the bases
+	var correctEigenSpace = info[0][1][3][eigenValueNum];
+	return vectorSetValidator(userArr, vectSetToLatexStr(correctEigenSpace));
+}
+// all eigenvalues are in this part are real
+const eigenValuesVectors = [
+	// matrices with 1 distinct eigenvalue
+	new QuestionSet([
+		// 2x2 matrices
+		new QuestionClass("Let $A=#4(#2(#1))$.  Compute the eigenvalues, then find a basis for the associated eigenspaces. \
+			(Enter the bases in the corresponding order to the eigenvalues.  So, the first basis goes with the first eigenvalue.)",
+			["#6(#3(#1))#10(#11)", "#6(#5(#1))"], [" ", " "], {
+				"1": () => {
+					var A = randMat(2, 2, -9, 9);
+					var eigens = get2x2Eigens(A);
+					// find a matrix with 1 distinct eigenvalue
+					while (eigens[1].length !== 1) {
+						A = randMat(2, 2, -9, 9);
+						eigens = get2x2Eigens(A);
+					}
+					return [A, eigens];
+				}, "4": matToLatexStr, "10": (a) => "", "11": () => [matrix([[0]])], "6": vectSetToLatexStr,
+				"2": (arr) => arr[0], "3": (arr) => arr[1][1], "5": (arr) => arr[1][3]
+		}, undefined, ["11", "5"]),
+		// 3x3 matrices
+		new QuestionClass("Let $A=#4(#2(#1))$.  Compute the eigenvalues, then find a basis for the associated eigenspaces. \
+			(Enter the bases in the corresponding order to the eigenvalues.  So, the first basis goes with the first eigenvalue.)",
+			["#6(#3(#1))#10(#11)", "#6(#5(#1))"], [" ", " "], {
+				"1": () => {
+					var A = randMat(3, 3, -9, 9);
+					var eigens = get3x3Eigens(A);
+					// find a matrix with 1 distinct eigenvalue
+					while (eigens[1].length !== 1) {
+						A = randMat(3, 3, -9, 9);
+						eigens = get3x3Eigens(A);
+					}
+					return [A, eigens];
+			}, "4": matToLatexStr, "10": (a) => "", "11": () => [matrix([[0]])], "6": vectSetToLatexStr,
+			"2": (arr) => arr[0], "3": (arr) => arr[1][1], "5": (arr) => arr[1][3]
+		}, undefined, ["11", "5"]),
+	], [["Eigenvalues: ", AnswerType.Vectors], ["Eigenspace 1: ", AnswerType.Vectors]]), // we don't need a custom validator for a single space
+	// matrices with 2 distinct eigenvalues
+	new QuestionSet([
+		// 2x2 matrices
+		new QuestionClass("Let $A=#4(#2(#1))$.  Compute the eigenvalues, then find a basis for the associated eigenspaces. \
+			(Enter the bases in the corresponding order to the eigenvalues.  So, the first basis goes with the first eigenvalue.)",
+			["#6(#3(#1))#10(#11)", "#6(#5(#1))", "#6(#7(#1))"], [" ", " ", " "], {
+				"1": () => {
+					var A = randMat(2, 2, -9, 9);
+					var eigens = get2x2Eigens(A);
+					// find a matrix with 2 real distinct eigenvalue
+					while (!eigens[0] || eigens[1].length !== 2) {
+						A = randMat(2, 2, -9, 9);
+						eigens = get2x2Eigens(A);
+					}
+					return [A, eigens];
+				}, "4": matToLatexStr, "10": (a) => "", "11": () => [matrix([[0]]), matrix([[0]])], "6": vectSetToLatexStr,
+				"2": (arr) => arr[0], "3": (arr) => arr[1][1], "5": (arr) => arr[1][3][0], "7": (arr) => arr[1][3][1]
+		}, undefined, ["11", "5", "7"], ["1"]),
+		// 3x3 matrices
+		new QuestionClass("Let $A=#4(#2(#1))$.  Compute the eigenvalues, then find a basis for the associated eigenspaces. \
+			(Enter the bases in the corresponding order to the eigenvalues.  So, the first basis goes with the first eigenvalue.)",
+			["#6(#3(#1))#10(#11)", "#6(#5(#1))", "#6(#7(#1))"], [" ", " ", " "], {
+			"1": () => {
+				var A = randMat(3, 3, -9, 9);
+				var eigens = get3x3Eigens(A);
+				// find a matrix with 2 real distinct eigenvalue
+				while (!eigens[0] || eigens[1].length !== 2) {
+					A = randMat(3, 3, -9, 9);
+					eigens = get3x3Eigens(A);
+				}
+				return [A, eigens];
+			}, "4": matToLatexStr, "10": (a) => "", "11": () => [matrix([[0]]), matrix([[0]])], "6": vectSetToLatexStr,
+			"2": (arr) => arr[0], "3": (arr) => arr[1][1], "5": (arr) => arr[1][3][0], "7": (arr) => arr[1][3][1]
+		}, undefined, ["11", "5", "7"], ["1"]),
+	], [["Eigenvalues: ", AnswerType.Vectors], ["Eigenspace 1: ", AnswerType.Vectors], ["Eigenspace 2: ", AnswerType.Vectors]],
+	[undefined, eigenSpaceValidator, eigenSpaceValidator]),
+	// matrices with 3 distinct eigenvalues
+	new QuestionSet([
+		new QuestionClass("Let $A=#4(#2(#1))$.  Compute the eigenvalues, then find a basis for the associated eigenspaces. \
+			(Enter the bases in the corresponding order to the eigenvalues.  So, the first basis goes with the first eigenvalue.)",
+			["#6(#3(#1))#10(#11)", "#6(#5(#1))", "#6(#7(#1))", "#6(#8(#1))"], [" ", " ", " ", " "], {
+				"1": () => {
+					var A = randMat(3, 3, -9, 9);
+					var eigens = get3x3Eigens(A);
+					// find a matrix with 3 real distinct eigenvalue
+					while (!eigens[0] || eigens[1].length !== 3) {
+						A = randMat(3, 3, -9, 9);
+						eigens = get3x3Eigens(A);
+					}
+					return [A, eigens];
+				}, "4": matToLatexStr, "10": (a) => "", "11": () => [matrix([[0]]), matrix([[0]]), matrix([[0]])], "6": vectSetToLatexStr,
+				"2": (arr) => arr[0], "3": (arr) => arr[1][1], "5": (arr) => arr[1][3][0], "7": (arr) => arr[1][3][1], "8": (arr) => arr[1][3][2]
+	}, undefined, ["11", "5", "7", "8"], ["1"]),
+	], [["Eigenvalues: ", AnswerType.Vectors], ["Eigenspace 1: ", AnswerType.Vectors], ["Eigenspace 2: ", AnswerType.Vectors], ["Eigenspace 3: ", AnswerType.Vectors]],
+		[undefined, eigenSpaceValidator, eigenSpaceValidator, eigenSpaceValidator])
+];
+
+const eigenValueDefnTerms = [
+	// given defective and characteristic polynomial
+	new QuestionSet([
+		new QuestionClass("Suppose that a matrix $A$ is defective and has the characteristic polynomial \
+			$(\\lambda #4(#1))(\\lambda #4(#2(#1)))(\\lambda #4(#3(#1, #2)))^2$.  \
+			Find the algebraic multiplicities of the eigenvalues and give the geometric multiplicity of the defective eigenvalue.  \
+			(List the algebraic multiplicities in increasing order)",
+			["#6(#5)", "1"], [" ", " "], {
+				"1": randI, "2": (a) => randIntExclude(-9, 9, a), "3": (a, b) => randIntExclude(-9, 9, a, b),
+				"4": addsub, "5": () => matrix([[1, 1, 2]]), "6": matToLatexStr
+		}, undefined, ["5", undefined])
+	], [["Algebraic Multiplicities: ", AnswerType.Matrix], ["Geometric Multiplicity", AnswerType.Exact]]),
+	// given all multiplicities (using triangular matrix)
+	new QuestionSet([
+		// not defective, diagonalizable
+		new QuestionClass("Suppose that $A=#4(#1)$ is a matrix whose eigenvalues have geometric multiplicities 1, 1, and 2.  Is $A$ defective?  Is $A$ diagonalizable?",
+			["No", "Yes"], " ", {
+				"1": () => {
+					var diagonal = [];
+					// position of 2 values
+					var twoDiagPos = randInt(1, 3);
+					for (var i = 0; i < 4; i++) {
+						if (i === twoDiagPos) {
+							diagonal[i] = diagonal[i - 1];
+							continue;
+						}
+						diagonal[i] = randInt(-9, 9, ...diagonal.slice(0, i));
+					}
+					var mat = matrix(diag(diagonal));
+					// upper or lower triangular
+					var isUpper = randInt(0, 1);
+					// fill other values
+					// below diagonal is 0s/random numbers for upper/lower matrix
+					for (var i = 0; i < 4; i++) {
+						for (var j = 0; j < i; j++) {
+							if (isUpper) mat.set([i, j], 0);
+							else mat.set([i, j], randInt(-9, 9));
+						}
+					}
+					// random number below/above diagonal
+					for (var i = 0; i < 4; i++) {
+						for (var j = i + 1; j < 4; j++) {
+							if (isUpper) mat.set([i, j], randInt(-9, 9));
+							else mat.set([i, j], 0);
+						}
+					}
+					return mat;
+				},
+				"4": matToLatexStr
+		}, [["Yes", "No"], ["Yes", "No"]]),
+		// defective, not diagonalizable
+		new QuestionClass("Suppose that $A=#4(#1)$ is a matrix whose eigenvalues all have a geometric multiplicity of 1.  Is $A$ defective?  Is $A$ diagonalizable?",
+			["Yes", "No"], " ", {
+				"1": () => {
+					var diagonal = [];
+					// position of 2 values
+					var twoDiagPos = randInt(1, 3);
+					for (var i = 0; i < 4; i++) {
+						if (i === twoDiagPos) {
+							diagonal[i] = diagonal[i - 1];
+							continue;
+						}
+						diagonal[i] = randInt(-9, 9, ...diagonal.slice(0, i));
+					}
+					var mat = matrix(diag(diagonal));
+					// upper or lower triangular
+					var isUpper = randInt(0, 1);
+					// fill other values
+					// below diagonal is 0s/random numbers for upper/lower matrix
+					for (var i = 0; i < 4; i++) {
+						for (var j = 0; j < i; j++) {
+							if (isUpper) mat.set([i, j], 0);
+							else mat.set([i, j], randInt(-9, 9));
+						}
+					}
+					// random number below/above diagonal
+					for (var i = 0; i < 4; i++) {
+						for (var j = i + 1; j < 4; j++) {
+							if (isUpper) mat.set([i, j], randInt(-9, 9));
+							else mat.set([i, j], 0);
+						}
+					}
+					return mat;
+				},
+				"4": matToLatexStr
+		}, [["Yes", "No"], ["Yes", "No"]])
+	], [["Defective: ", AnswerType.MultipleChoice], ["Diagonalizable: ", AnswerType.MultipleChoice]])
+]
 
 //----------------------------------------------------------------------------
 // Inner Product Spaces
 //----------------------------------------------------------------------------
 
+const innerProductExamples = [
+	// inner products
+	new QuestionSet([
+		new QuestionClass("Define a pairing on ${\\bf R}^3$ by $<{\\bf v},{\\bf w}> = {\\bf v}^T*A*{\\bf w}$, \
+			where $A=#2(#1)$.  Is this pairing an inner product?  If so, give its matrix representation.",
+			["Yes", "#2(#1)"], ["", ""], {
+				"1": () => matrix(diag([1, 5, 2])), "2": matToLatexStr
+		}, [["Yes", "No"], []], [undefined, "1"]),
+		new QuestionClass("Define a pairing on ${\\bf R}^3$ by $<{\\bf v},{\\bf w}> = {\\bf v}^T*A*{\\bf w}$, \
+			where $A=#2(#1)$.  Is this pairing an inner product?  If so, give its matrix representation.",
+			["Yes", "#2(#1)"], ["", ""], {
+			"1": () => matrix(diag([9, 2, 4])), "2": matToLatexStr
+		}, [["Yes", "No"], []], [undefined, "1"])
+	], [AnswerType.MultipleChoice, ["Matrix Representation", AnswerType.Matrix]]),
+	// not inner products
+	new QuestionSet([
+		new QuestionClass("Define a pairing on ${\\bf R}^3$ by $<{\\bf v},{\\bf w}> = {\\bf v}^T*A*{\\bf w}$, \
+			where $A=#2(#1)$.  Is this pairing an inner product?  If so, give its matrix representation.",
+			["No", "#2(#3)"], ["", ""], {
+			"1": () => matrix(diag([3, 7, 0])), "2": matToLatexStr, "3": () => zeros(3,3)
+		}, [["Yes", "No"], []], [undefined, "1"]),
+		new QuestionClass("Define a pairing on ${\\bf R}^3$ by $<{\\bf v},{\\bf w}> = {\\bf v}^T*A*{\\bf w}$, \
+			where $A=#2(#1)$.  Is this pairing an inner product?  If so, give its matrix representation.",
+			["No", "#2(#3)"], ["", ""], {
+				"1": () => matrix([[4, 5, 6], [0, 3, 8], [0, 0, 2]]), "2": matToLatexStr, "3": () => zeros(3,3)
+		}, [["Yes", "No"], []], [undefined, "1"])
+	], [AnswerType.MultipleChoice, ["Matrix Representation", AnswerType.Matrix]]),
+];
+
+const normDistComputation = [new QuestionSet([
+	new QuestionClass("Let $A=#6(#1)$ be the matrix representation of an inner product and let ${\\bf v}=#6(#2)$ and ${\\bf w}=#6(#3)$ \
+		be vectors.  Compute the norm of ${\\bf v}$ and the distance between ${\\bf v}$ and ${\\bf w}$ with respect to the inner product.",
+		["#6(#4(#1, #2))", "#6(#5(#1, #2, #3))"], "", {
+			"1": () => {
+				var matrices = [
+					matrix([[10, 7], [7, 5]]),
+					matrix([[2,0],[0,5]])
+				];
+				return matrices[randInt(0, matrices.length-1)];
+			}, "2": () => randVect(2), "3": () => randVect(2),
+			"4": (A, v) => {
+				return sqrt(multiply(multiply(transpose(v), A), v));
+			}, "5": (A, v, w) => {
+				var diff = subtract(v, w);
+				return sqrt(multiply(multiply(transpose(diff), A), diff));
+			}, "6": matToLatexStr
+	})
+], [["Norm of v", AnswerType.Numeric], ["Distance", AnswerType.Numeric]])];
+
+const correctIPA = function (...exclude) {
+	var arr = [
+		// bilinear
+		"$<\\alpha {\\bf v}, {\\bf w}>=\\alpha<{\\bf v},{\\bf w}>$",
+		"$<{\\bf v},\\beta{\\bf w}>=\\beta<{\\bf v},{\\bf w}>$",
+		"$<{\\bf u}+{\\bf v},{\\bf w}>=<{\\bf u},{\\bf w}>+<{\\bf v},{\\bf w}>$",
+		"$<{\\bf u},{\\bf v}+{\\bf w}>=<{\\bf u},{\\bf v}>+<{\\bf u},{\\bf w}>$",
+		// positive definite
+		"$<{\\bf v},{\\bf v}>\\geq0$",
+		"$<{\\bf v},{\\bf v}>=0$ iff ${\\bf v}={\\bf 0}$",
+		// symmetric
+		"$<{\\bf v},{\\bf w}>=<{\\bf w},{\\bf v}>$"
+	];
+	var statement;
+	do {
+		statement = arr[randInt(0, arr.length - 1)];
+	} while (exclude.indexOf(statement) !== -1);
+	return statement;
+}
+const incorrectIPA = function (...exclude) {
+	var arr = [
+		// bilinear
+		"$<\\alpha{\\bf u}+\\beta{\\bf v},{\\bf w}>=<{\\bf u},\\beta{\\bf w}>+<{\\bf v},\\alpha{\\bf w}>$",
+		"$<{\\bf u}+{\\bf v},{\\bf w}+{\\bf x}>=<{\\bf u},{\\bf w}>+<{\\bf v},{\\bf x}>$",
+		// positive definite
+		"$<{\\bf v},{\\bf w}>\\geq0$",
+		"$<{\\bf v},{\\bf w}>=0$ iff ${\\bf v}={\\bf w}$",
+		"$<{\\bf v},{\\bf v}>\\leq 0$"
+	];
+	var statement;
+	do {
+		statement = arr[randInt(0, arr.length - 1)];
+	} while (exclude.indexOf(statement) !== -1);
+	return statement;
+}
+const innerProductAxioms = [new QuestionSet([
+	// 2 correct
+	new QuestionClass("Select all properties of inner products $<\\_,\\_>$ which are true.", ["1", "2"], "",
+		{ "1": correctIPA, "2": correctIPA, "3": incorrectIPA, "4": incorrectIPA },
+		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "#3 "), new Option("4", "#4(#3)")]),
+	// 3 correct
+	new QuestionClass("Select all properties of inner products $<\\_,\\_>$ which are true.", ["1", "2", "3"], "",
+		{ "1": correctIPA, "2": correctIPA, "3": correctIPA, "4": incorrectIPA },
+		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "#3(#1, #2)"), new Option("4", "#4 ")]),
+	// 4 correct
+	new QuestionClass("Select all properties of inner products $<\\_,\\_>$ which are true.", ["1", "2", "3", "4"], "",
+		{ "1": correctIPA, "2": correctIPA, "3": correctIPA, "4": correctIPA },
+		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "#3(#1, #2)"), new Option("4", "#4(#1, #2, #3)")])
+], AnswerType.SelectAll)];
+
+
+const orthogonalDefns = [
+	// orthogonal vectors
+	new QuestionSet([
+		new QuestionClass("Give a vector that is orthogonal to ${\\bf v}=#4(#1)$ and give an orthonormal basis for the span of those vectors.",
+			["#4(#2(#1))", "#5(#3(#1, #2))"], ["", ""], {
+				"1": () => randVect(3), "4": matToLatexStr, "5": vectSetToLatexStr, 
+				"2": (v) => matrix([[-v.get([1, 0])], [v.get([0, 0])], [0]]),
+				"3": (v, w) => {
+					var S = [];
+					S.push(divide(clone(v), sqrt(dot(v, v))));
+					S.push(divide(clone(w), sqrt(dot(w, w))));
+					return S;
+				}
+		}, undefined, ["2", "3"], ["1"])
+	], [AnswerType.Matrix, AnswerType.Vectors], [
+		function (userArr, correctAnswer, prevAnswers, info) {
+			// check that userArr and the given vector are orthogonal
+			return dot(matrix(userArr), info[0]) === 0;
+		}, function (userArr, correctAnswer, prevAnswers, info) {
+			var normV = divide(clone(info[0]), sqrt(dot(info[0], info[0])));
+			var normW = divide(matrix(prevAnswers[0]), sqrt(dot(prevAnswers[0], prevAnswers[0])));
+			return vectorSetValidator(userArr, vectSetToLatexStr([normV, normW]));
+		}
+	]),
+	// vector with space
+	new QuestionSet([
+		new QuestionClass("Give a vector that is orthogonal to the subspace Span$\\left(#4(#1)\\right)$", "#3(#2(#1))", "", {
+			"4": vectSetToLatexStr, "3": matToLatexStr, "1": () => [randVect(3), randVect(3)], "2": (S) => {
+				var A = concat(S[0], S[1]);
+				var basis = getNullSpaceBasis(transpose(A));
+				return basis[0];
+			}
+		}, undefined, "2", ["1"])
+	], ["Orthogonal Vector", AnswerType.Matrix], function (userArr, correctAnswer, prevAnswers, info) {
+			var x = zeros(3, 1);
+			for (var i = 0; i < 3; i++) {
+				x.set([i, 0], numericParser(userArr[i][0]));
+			}
+			var A = concat(info[0][0], info[0][1]);
+			var b = multiply(transpose(A), x);
+			return matrixValidator(b.toArray(), matToLatexStr(zeros(2, 1)));
+	}),
+	// subspaces
+	new QuestionSet([
+		new QuestionClass("Let $V=\\text{Span}\\left(#4(#1)\\right)$ be a subspace.  Find a basis for a two dimensional subspace \
+			that is orthogonal to $V$.", "#4(#2(#1))", "", {
+				"1": () => [randVect(5), randVect(5)], "4": vectSetToLatexStr, "2": (S) => {
+					var A = concat(S[0], S[1]);
+					var basis = getNullSpaceBasis(transpose(A));
+					return [basis[0], basis[1]];
+				}
+		}, undefined, "2", "1")
+	], AnswerType.Vectors, function (userArr, correctAnswer, prevAnswers, info) {
+			var S = [];
+			for (var i = 0; i < 2; i++) {
+				var x = zeros(5, 1);
+				for (var j = 0; j < 5; j++) {
+					x.set([j, 0], numericParser(userArr[i][j]));
+				}
+				S.push(x);
+			}
+			// check that the vectors are linearly independent
+			if (!areColsLI(vectSetToMat(S), 5, 2)) {
+				return false;
+			}
+			// check that the vectors are in the null space of A^T
+			var A = concat(info[0][0], info[0][1]);
+			var b1 = multiply(transpose(A), S[0]);
+			var b2 = multiply(transpose(A), S[1]);
+			return matrixValidator(b1.toArray(), matToLatexStr(zeros(2, 1))) &&
+				matrixValidator(b2.toArray(), matToLatexStr(zeros(2, 1)));
+	})
+];
+
+const correctOP = function (...exclude) {
+	var arr = [
+		// matrices
+		"$A$ is an orthogonal matrix iff $A^T*A=I$",
+		"$A$ is an orthogonal matrix iff $A^{-1}=A^T",
+		"$A$ is an orthogonal matrix iff for all ${\\bf v},{\\bf w}$, ${\\bf v}\\cdot{\\bf w}=(A*{\\bf v})\\cdot(A*{\\bf w})$",
+		// subspaces
+		"For a subspace $W$, $(W^\\perp)^\\perp=W$",
+		"Two subspaces $U,V$ are orthogonal iff for all $u\\in U, v\\in V$, $u\\perp v$",
+		"For a subspace $W$ of ${\\bf R}^n$, $\\text{dim}(W)+\\text{dim}(W^\\perp)=n$",
+		"For a subspace $W$, $W\\cap W^\\perp=\\{{\\bf 0}\\}$",
+		// fundamental theorem of subspaces
+		"For a matrix $A$, $C(A)^\\perp=N(A^T)$",
+		"For a matrix $A$, $R(A)=N(A)^\\perp$"
+	];
+	var statement;
+	do {
+		statement = arr[randInt(0, arr.length - 1)];
+	} while (exclude.indexOf(statement) !== -1);
+	return statement;
+}
+const incorrectOP = function (...exclude) {
+	var arr = [
+		// matrices
+		"$A$ is an orthogonal matrix iff its columns are pairwise orthogonal",
+		"$A$ is an orthogonal matrix iff $A^T*A^{-1}=I$",
+		// subspaces
+		"For a subspace $W$ of ${\\bf R}^n$, $W^\\perp\\cup W={\\bf R^n}$",
+		"Two subspaces $U,V$ are orthogonal iff there exists a $u\\in U$ such that for all $v\\in V$, $u\\perp v$",
+		"For a subspace $W$, $W\\cap W^\\perp=\\emptyset$"
+	];
+	var statement;
+	do {
+		statement = arr[randInt(0, arr.length - 1)];
+	} while (exclude.indexOf(statement) !== -1);
+	return statement;
+}
+const orthogonalProperties = [new QuestionSet([
+	// 2 correct
+	new QuestionClass("Select all properties which are true.", ["1", "2"], "",
+		{ "1": correctOP, "2": correctOP, "3": incorrectOP },
+		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "#3 ")]),
+	// 3 correct
+	new QuestionClass("Select all properties which are true.", ["1", "2", "3"], "",
+		{ "1": correctOP, "2": correctOP, "3": correctOP },
+		[new Option("1", "#1 "), new Option("2", "#2(#1)"), new Option("3", "#3(#1, #2)")])
+], AnswerType.SelectAll)];
+
+const projectionOntoSubspace = [new QuestionSet([
+	// onto a subspace
+	new QuestionClass("Let $v=#5(#2(#1))$ be a vector and let $W$ be a subspace with the basis $\\left\\{#4(#3(#1))\\right\\}$.  \
+		Compute $\\text{pr}_W({\\bf v})$ without finding an orthogonal basis for $W$.", "#5(#6(#1))", "",
+		{
+			"5": matToLatexStr, "4": vectSetToLatexStr, "1": () => {
+				var A = randMat(4, 2, -9, 9);
+				var b = randMat(4, 1, -9, 9);
+				while (!isInconsistent(A, b, 4, 2)) {
+					A = randMat(4, 2, min, max, exclude);
+					b = randMat(4, 1, min, max, exclude);
+				}
+				return [A, b];
+			}, "2": (arr) => arr[1], "3": (arr) => vectSetFromMat(arr[0]),
+			"6": (arr) => {
+				var A = arr[0]; var b = arr[1];
+				return multiply(A, inv(multiply(transpose(A), A)), transpose(A), b);
+			}
+	}, undefined, "6"),
+	// onto a orthogonal complement of a subspace
+	new QuestionClass("Let $v=#5(#2(#1))$ be a vector and let $W$ be a subspace with the basis $\\left\\{#4(#3(#1))\\right\\}$.  \
+		Compute $\\text{pr}_{W^\\perp}({\\bf v})$ without finding an orthogonal basis for $W$ or $W^\\perp$.", "#5(#6(#1))", "",
+		{
+			"5": matToLatexStr, "4": vectSetToLatexStr, "1": () => {
+				var A = randMat(4, 2, -9, 9);
+				var b = randMat(4, 1, -9, 9);
+				while (!isInconsistent(A, b, 4, 2)) {
+					A = randMat(4, 2, min, max, exclude);
+					b = randMat(4, 1, min, max, exclude);
+				}
+				return [A, b];
+			}, "2": (arr) => arr[1], "3": (arr) => vectSetFromMat(arr[0]),
+			"6": (arr) => {
+				var A = arr[0]; var b = arr[1];
+				return subtract(b, multiply(A, inv(multiply(transpose(A), A)), transpose(A), b));
+			}
+		}, undefined, "6")
+], AnswerType.Matrix)];
+
+const findOrthoBasis = [new QuestionSet([
+	new QuestionClass("Let $W$ be a subspace with the basis $\\left\\{#4(#1)\\right\\}$.  Find an orthogonal basis for $W$.",
+		"#4(#2(#1))", "", {
+			"4": vectSetToLatexStr, "1": () => {
+				var A = randMat(4, 3, -5, 5);
+				while (!areColsLI(A, 4, 3)) {
+					A = randMat(4, 3, -5, 5);
+				}
+				return vectSetFromMat(A);
+			}, "2": (V) => {
+				var S = [clone(V[0])];
+				for (var i = 1; i < V.length; i++) {
+					var proj = zeros(4, 1);
+					for (var j = 0; j < i; j++) {
+						var scalar = dot(V[i], S[j])/dot(S[j], S[j]);
+						proj = add(proj, multiply(scalar, S[j]));
+					}
+					S.push(subtract(V[i], proj));
+				}
+				return S;
+			}
+	}, undefined, "2", ["1"])
+], AnswerType.Vectors, function (userArr, correctAnswer, prevAnswers, info) {
+		var error = Math.pow(10, -2);
+		var A = zeros(4, 3);
+		for (var i = 0; i < 4; i++) {
+			for (var j = 0; j < 3; j++) {
+				A.set([i, j], numericParser(userArr[j][i]));
+			}
+		}
+		// check that vectors are linearly independent
+		if (!areColsLI(A, 4, 3, error)) {
+			return false;
+		}
+		console.log("Linearly Independent");
+		// check that vector set is orthogonal (i.e. vectors are pairwise orthogonal)
+		var S = vectSetFromMat(A);
+		for (var i = 0; i < S.length; i++) {
+			for (var j = i + 1; j < S.length; j++) {
+				if (Math.abs(dot(S[i], S[j])) > error) {
+					return false;
+				}
+				console.log("Orthogonal "+i+", "+j);
+			}
+		}
+		// check that they have the same span (i.e. each vector in the original basis is in the span of this set)
+		var X = info[0];
+		for (var i = 0; i < X.length; i++) {
+			if (isInconsistent(A, X[i], 4, 3, error)) {
+				return false;
+			}
+			console.log("Spans " + i);
+		}
+		return true;
+}, "Answers may need to be correct to more decimal places than normal (up to 5 or 6)")];
+
+const polynomialDataFitting = [new QuestionSet([
+	new QuestionClass("Interpret the following matrix as a set of (x,y) coordinates $#4(#1(#6))$ and find the best fit polynomial \
+			of degree #2(#6).  Also give the error of this approximation. (Enter the coefficients by increasing power of $x$)",
+		["#4(#7(#3(#1, #2, #6)))", "#5(#1, #3)"], ["", ""], {
+			"6": () => randInt(3, 6), "2": (p) => randInt(1, Math.min(4, p - 2)), "4": matToLatexStr,
+			"1": (p) => randMat(p, 2, -9, 9), "5": (P, arr) => {
+				var c = arr[0];
+				var A = arr[1];
+				var y = column(P, 1);
+				var diffVect = subtract(y, multiply(A, c));
+				return Math.sqrt(dot(diffVect, diffVect));
+			},
+			"3": (P, n, p) => {
+				var x = column(P, 0);
+				var y = column(P, 1);
+				var A = zeros(p, n + 1);
+				for (var i = 0; i < n + 1; i++) {
+					for (var j = 0; j < p; j++) {
+						A.set([j, i], Math.pow(x.get([j, 0]), i));
+					}
+				}
+				return [multiply(inv(multiply(transpose(A), A)), transpose(A), y), A];
+			}, "7": (arr) => arr[0]
+	}, undefined, ["7", undefined])
+], [["Polynomial Coefficients", AnswerType.Matrix], ["Error", AnswerType.Numeric]])];
+
 // Organized by decreasing level of importance (each level of importance will be done half as often as the level above it)
 var linAlgProbs = [
-	[solveMatrixEq, vectorSpans, changeOfBasis],
-	[computingRREF, computeInverse, columnSpaceSpan, nullSpaceSpan, vectorSpaceExamples, changeBaseAndTransform],
-	[linearDTRelationships, rowSpaceSpan, vectorSpacesDefnTerms],
-	[matrixArithmetic, matrixOperations, linearDefnTerms, transSpaces, linearTransExamples]];
+	[solveMatrixEq, vectorSpans, changeOfBasis, eigenValuesVectors, projectionOntoSubspace, findOrthoBasis],
+	[computingRREF, computeInverse, columnSpaceSpan, nullSpaceSpan, vectorSpaceExamples, changeBaseAndTransform, computeDeterminant, polynomialDataFitting],
+	[linearDTRelationships, rowSpaceSpan, vectorSpacesDefnTerms, eigenValueDefnTerms, innerProductExamples, innerProductAxioms, orthogonalDefns, orthogonalProperties],
+	[matrixArithmetic, matrixOperations, linearDefnTerms, transSpaces, linearTransExamples, determinantProperties, normDistComputation]];
 var linAlgProbsBySubject = {
 	"Linear Systems of Equations": [matrixArithmetic, matrixOperations, computingRREF, computeInverse, solveMatrixEq, linearDTRelationships, linearDefnTerms],
-	"Vector Spaces": [],
-	"Eigenvalues": [],
-	"Inner Product Spaces": []
+	"Vector Spaces": [vectorSpans, columnSpaceSpan, rowSpaceSpan, nullSpaceSpan, vectorSpacesDefnTerms, vectorSpaceExamples, changeOfBasis, linearTransExamples, transSpaces, changeBaseAndTransform],
+	"Eigenvalues": [computeDeterminant, determinantProperties, eigenValuesVectors, eigenValueDefnTerms],
+	"Inner Product Spaces": [innerProductExamples, normDistComputation, innerProductAxioms, orthogonalDefns, orthogonalProperties, projectionOntoSubspace, findOrthoBasis, polynomialDataFitting]
 };
 var linAlgProbsNamed = {
-	"rref": computingRREF
+	"Matrix Arithmetic": matrixArithmetic, "Properties of Matrix Operations": matrixOperations, "rref": computingRREF, "Matrix Inverse": computeInverse,
+	"Solving Linear Systems": solveMatrixEq, "Linear Systems Definitions/Terms 1": linearDefnTerms, "Linear Systems Definitions/Terms 2": linearDTRelationships,
+	"Span of a Vector Set": vectorSpans, "Column Space": columnSpaceSpan, "Row Space": rowSpaceSpan, "Null Space": nullSpaceSpan,
+	"Examples of Vector Spaces": vectorSpaceExamples, "Vector Spaces Definitions/Terms": vectorSpacesDefnTerms, "Change of Basis": changeOfBasis,
+	"Examples of Linear Transformations": linearTransExamples, "Change of Basis and Linear Transformations": changeBaseAndTransform,
+	"Vector Spaces of a Linear Transformation": transSpaces, "Determinant (computation)": computeDeterminant, "Properties of the Determinant": determinantProperties,
+	"Eigenvalues and Eigenvectors": eigenValuesVectors, "Eigenvalues Definitions/Terms": eigenValueDefnTerms, "Examples of Inner Products": innerProductExamples, 
+	"Inner Product Axioms": innerProductAxioms, "Norms and Distance": normDistComputation, "Orthogonality Definitions/Terms": orthogonalDefns,
+	"Properties of Orthogonality": orthogonalProperties, "Projection of a Vector onto a Subspace": projectionOntoSubspace, "Orthogonal Bases": findOrthoBasis,
+	"Best Fit Polynomial": polynomialDataFitting
 };
 
 module.exports = { linAlgProbs, linAlgProbsBySubject, linAlgProbsNamed };

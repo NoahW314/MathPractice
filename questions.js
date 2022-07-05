@@ -1,6 +1,6 @@
 
 const { ComplexNumber, arrFromLatexStr, numericParser, vectSetFromLatexStr } = require("./util.js");
-const { size } = require("mathjs");
+const { size, typeOf } = require("mathjs");
 
 // Class for a concrete instance of a question and answer
 
@@ -484,6 +484,7 @@ class QuestionSet {
 		this.questions = questionClasses;
 		// should be a value from the AnswerType "enum" or an array of such values
 		if (!Array.isArray(answer_type)) this.answerType = [answer_type];
+		else if (typeof answer_type[0] === "string") this.answerType = [answer_type]; 
 		else this.answerType = answer_type;
 		// a function that takes two inputs (user answer and correct answer, in that order) 
 		// and returns a boolean to indicate if the user answer is correct or not.
@@ -509,12 +510,13 @@ class QuestionSet {
 		}
 		// if a single validator is given, then we apply it to all answer parts
 		else {
-			for (var i = 0; i < answerType.length; i++) {
+			for (var i = 0; i < this.answerType.length; i++) {
 				this.validate.push(answer_validation);
 			}
 		}
 		// the text that tells what type of answer is expected (e.g. a number, a string, a complex number)
-		this.answerHint = hint;
+		if (Array.isArray(hint)) this.answerHint = hint;
+		else this.answerHint = [hint];
 	};
 	getInstance() {
 		var randomIndex = Math.floor(Math.random() * this.questions.length);
@@ -536,4 +538,7 @@ class QuestionSet {
 	};
 };
 
-module.exports = { QuestionSet, QuestionClass, Question, AnswerType, Option, numericValidator };
+module.exports = {
+	QuestionSet, QuestionClass, Question, AnswerType, Option,
+	numericValidator, vectorSetValidator, matrixValidator
+};

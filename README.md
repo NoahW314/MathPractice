@@ -1,3 +1,4 @@
+
 # Adding new subjects and problems
 
 To facilitate testing of new subjects and problems, I put lines in *question.js* and *processing.js* that allow you to set which topic, QuestionSet, and QuestionClass is chosen.  I marked these with "//TODO: Unhack" markers.
@@ -34,7 +35,11 @@ To facilitate testing of new subjects and problems, I put lines in *question.js*
 	- If there are multiple answer parts, then an array containing the above array should be used.  Any answer parts which aren't MultipleChoice or SelectAll should have an empty array `[]` in their spot in this array.
 	 - The string will be parsed as LaTeX with constant function support, however since the answer need match this, it is preferably (maybe necessary?) to use `Option` if need either of these things to be supported.
 	 - *Instead of a string, an `Option` object can be used.  This object has two properties, a value and a display.  The value should match the answer given as the 2nd parameter and will not be parsed, while the display doesn't have to match anything and will be parsed as Latex with constant function support.
- 6. The sixth parameter is used when there is a Matrix or Vectors answer type to the question.  The value is the name (as a string) of the constant function whose value is a matrix or vector set with the same dimensions as the answer should have (typically, we use the actual answer).  As usual, if there are multiple answer parts, then an array must be passed with non-Matrix/Vectors answer parts set to undefined.
+ 6. The sixth parameter provides extra information about the answer type in some cases.  As usual, if there are multiple answer parts, then an array must be passed with unused indices set to undefined.  Those cases are the following:
+	 - Matrix or Vectors answer type.  The value is the name (as a string) of the constant function whose value is a matrix or vector set with the same dimensions as the answer should have (typically, we use the actual answer).
+	 - SelectAll answer type.  The value is the name of the constant function that returns the answer to this question as an array (this is needed since constant functions are normally embedded in strings and can't give an array answer [the array gets converted to a string and messes things up]).
+	 - MultipleChoice answer type.  The value is a boolean that indicates if the choices should be shuffled or not.  Note that SelectAll questions are always shuffled, but MultipleChoice questions are not shuffled by default.
+	 - Series answer type.  The value is the summation notation part of the series as a Latex string.
  7. The seventh parameter is used with custom validators.  When a validator needs extra information from the question to determine if the answer is right, it can be passed via this parameter.  This parameter is an array of strings which are the names of constant functions whose values will be passed in an array as the fourth parameter to the validator (answers to the previous question parts is the third parameter).  All of these values will be passed to each custom validator for the entire question (regardless of the part).
 
 ## Constant functions

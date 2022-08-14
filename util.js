@@ -1,5 +1,5 @@
 const { size, zeros, det, subset, index, range, map, row, deepEqual,
-	concat, clone, typeOf } = require("mathjs");
+	concat, clone, typeOf, complex, Infinity } = require("mathjs");
 
 // Note that these are both inclusive on both ends
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
@@ -23,6 +23,10 @@ const fix = function (x) {
 const prec = function (x) {
 	return +(x).toPrecision(3);
 };
+// strFracs.length-1 : 1
+// strFracs.length-2 : 2
+// strFracs.length-n : n
+// -i+strFracs.length: i
 var strFracs = ["0", "\\pi/4", "\\pi/3", "\\pi/2", "2\\pi/3", "3\\pi/4", "\\pi",
 	"5\\pi/4", "4\\pi/3", "3\\pi/2", "5\\pi/3", "7\\pi/4"];
 var numFracs = [0, Math.PI / 4, Math.PI / 3, Math.PI / 2, 2 * Math.PI / 3, 3 * Math.PI / 4,
@@ -203,104 +207,177 @@ const numericParser = function (numStr) {
 	if (typeof numStr === "number") {
 		return numStr;
 	}
-	var num = Number(numStr);
-	if (numStr.indexOf("\\frac") !== -1) {
-		var firstPart = numStr.slice(0, numStr.indexOf("\\frac"));
+	var num = Number(numStr.replace(/\s/g, ""));
+	var fracIndex = numStr.indexOf("\\frac");
+	var sqrtIndex = numStr.indexOf("\\sqrt");
+	// we handle which ever comes first (i.e. is on the outside of the expression)
+	if (fracIndex !== -1 && (sqrtIndex === -1 || fracIndex < sqrtIndex)) {
+		var firstPart = numStr.slice(0, fracIndex);
 		var start1 = numStr.indexOf("{");
-		var end1 = numStr.indexOf("}");
+		var end2 = numStr.lastIndexOf("}");
+		// walk through the string until we find the matching close } to the first one
+		var depth = 1;
+		var index = start1 + 1;
+		while (depth !== 0) {
+			var char = numStr.charAt(index);
+			if (char === "{") depth++;
+			if (char === "}") depth--;
+			index++;
+		}
+		var end1 = index - 1;
 		var start2 = numStr.indexOf("{", end1 + 1);
-		var end2 = numStr.indexOf("}", end1 + 1);
-		var numer = Number(numStr.slice(start1 + 1, end1));
-		var denom = Number(numStr.slice(start2 + 1, end2));
+		// allow for nested fractions or square roots in fractions
+		var numer = numericParser(numStr.slice(start1 + 1, end1));
+		var denom = numericParser(numStr.slice(start2 + 1, end2));
 		num = numer / denom;
 		if (firstPart === "-") {
-			num *= -1
+			num *= -1;
 		}
-		else if (firstPart !== "") {
+		else if (firstPart !== "" && firstPart !== "+") {
 			if (firstPart[0] === "-") {
 				num *= -1;
 			}
-			num += Number(firstPart);
+			num += numericParser(firstPart);
+		}
+	}
+	else if (sqrtIndex !== -1) {
+		var firstPart = numStr.slice(0, sqrtIndex);
+		var start = numStr.indexOf("{");
+		var end = numStr.lastIndexOf("}");
+		var lastPart = numStr.slice(end+1);
+		// allow for nested square roots or square roots of a fraction
+		var root = numericParser(numStr.slice(start + 1, end));
+		num = Math.sqrt(root);
+		if (firstPart === "-") {
+			num *= -1;
+		}
+		else if (firstPart !== "" && firstPart !== "+") {
+			num *= numericParser(firstPart);
+		}
+		if (lastPart !== "") {
+			if (numStr.charAt(end + 1) === "*") {
+				num *= numericParser(lastPart.slice(1));
+			}
+			else {
+				num += numericParser(lastPart);
+			}
 		}
 	}
 	else if (numStr.indexOf("/") !== -1) {
 		var index = numStr.indexOf("+") !== -1 ? numStr.indexOf("+") : numStr.lastIndexOf("-");
 		var splitIndex = numStr.indexOf("/");
-		var numer = Number(numStr.slice(index + 1, splitIndex));
-		var denom = Number(numStr.slice(splitIndex + 1));
+		var numer = numericParser(numStr.slice(index + 1, splitIndex));
+		var denom = numericParser(numStr.slice(splitIndex + 1));
 		num = numer / denom;
 		if (index !== -1) {
 			if (numStr.indexOf("-") !== -1) {
 				num *= -1;
 			}
-			num += Number(numStr.slice(0, index));
+			num += numericParser(numStr.slice(0, index));
 		}
+	}
+	else if (numStr.indexOf("\\pi") !== -1) {
+		// things we handle:  2\pi/3, -\pi/3, -\sqrt{2}\pi etc.
+		// things we do NOT handle:  \pi-3, 2*\pi, 1/\pi, \pi 2, \pi*2, etc.
+		var piIndex = numStr.indexOf("\\pi");
+		// we assume that there is a number (or a minus sign or maybe nothing) before the pi symbol
+		var firstPart = numStr.slice(0, piIndex).replace(/\s/g, "");
+		if (firstPart === "-") return -Math.PI;
+		if (firstPart === "") return Math.PI;
+		return Number(firstPart) * Math.PI;
 	}
 	return num;
 }
+const complexParser = function (str, form) {
+	// when the input is already a complex number
+	if (typeOf(str) == "Complex") return str;
 
-//TODO: We don't this anymore (probably) because we have complex number support through math.js 
-// (but we should still wait until we actually try to do stuff with complex numbers before removing it)
-// This parsing constructor is untested, but it was based on my C++ parser
-// so it should have few to no problems.
-// The parser does not support fractions or mixed numbers, though I don't if 
-// support should be added for those or not. 
-// (It will depend on how many problems actually use this)
-// If we do include support, we can just use the Numeric validator code instead of Number()
-class ComplexNumber {
-	constructor(str) {
-		this.r = 0;
-		this.i = 0;
-		if (str === "i" || str === "+i") {
-			this.i = 1;
+	// special case for handling infinity
+	if (str === "\\infty") {
+		return Infinity;
+	}
+
+	if (form === undefined) {
+		if (str.indexOf("e^") !== -1) form = "exp";
+		else form = "rect";
+	}
+
+	// re^{i\phi}
+	if (form === "exp") {
+		// special case for 0 (which doesn't really have an exponential form)
+		if (str.trim() === "0") return complex(0, 0);
+
+		var expIndex = str.indexOf("e^");
+		// no e^ indicates that is just a real number (so exponential form doesn't make much sense)
+		if (expIndex === -1) return complex(numericParser(str), 0);
+		
+		var start = str.indexOf("{");
+		var end = str.indexOf("}");
+		if (start === -1 || end === -1 || expIndex > start || start > end) {
+			throw new Error(str+" does not have exponential form re^{i theta}!");
 		}
-		else if (str === "-i") {
-			this.i = -1;
+		var radiusStr = str.slice(0, expIndex).replace(/\s/g, "");
+		if (radiusStr === "") {
+			var rad = 1;
 		}
 		else {
-			var firstPart = "";
-			var index = 0;
-			while (index !== str.length && str[index] !== "i" &&
-				(str[index] !== "+" && str[index] !== "-")) {
-				firstPart += str[index];
-				index++;
-			}
-			var firstNum = Number(firstPart);
-			if (index === str.length) {
-				this.r == firstNum;
-			}
-			else if (str[index] === "i") {
-				this.i = firstNum;
-			}
-			else {
-				this.r = firstNum;
-				if (str.slice(index) === "+i") {
-					this.i = 1;
-				}
-				else if (str.slice(index) === "-i") {
-					this.i = -1;
-				}
-				else {
-					var secondPart = "";
-					while (str[index] !== "i") {
-						secondPart += str[index];
-						index++;
-					}
-					this.i = Number(secondPart);
-				}
-			}
-
+			var rad = numericParser(radiusStr);
 		}
-	};
-	equals(other) {
-		return this.r.toFixed(2) === other.r.toFixed(2) &&
-			this.i.toFixed(2) === other.i.toFixed(2);
-	};
-};
+		var exponent = str.slice(start + 1, end);
+		if (exponent.charAt(0) === "i") exponent = exponent.slice(1);
+		// allows for -i\pi/4 or similar
+		else if (exponent.charAt(1) === "i") exponent = exponent.charAt(0) + exponent.slice(2);
+		else if (exponent.slice(-1) === "i") exponent = exponent.slice(0, -1);
+		else {
+			throw new Error(str + " does not have exponential form re^{i theta}!");
+		}
+		var phi = numericParser(exponent);
+		var c = complex({ r: rad, phi: phi });
+		return c;
+	}
+	// a+bi
+	else if (form === "rect") {
+		// special cases
+		// when the input is +i or -i
+		if (str === "i" || str === "+i") return complex(0, 1);
+		if (str === "-i") return complex(0, -1);
+
+		// find the splitting point between the real and imaginary parts (if it exists)
+		// we ignore any +/- in the first position because it can't split the number, so it must be the sign for that part of the number
+		var index = str.lastIndexOf("+");
+		if (index === -1 || index === 0) {
+			index = str.lastIndexOf("-");
+		}
+		// when the input has a single part (i.e. when there is no + or -)
+		if (index === -1 || index === 0) {
+			// pure imaginary nunber
+			if (str.charAt(str.length - 1) === "i") {
+				return complex(0, numericParser(str.slice(0, str.length - 1)));
+			}
+			// real number
+			else {
+				return complex(numericParser(str), 0);
+			}
+		}
+		// otherwise, we split the string at the + or - 
+		else {
+			var realPart = str.slice(0, index);
+			var imagPart = str.slice(index, str.length - 1);
+			if (imagPart.replace(/\s/g, "") === "-") imagPart = "-1";
+			if (imagPart.replace(/\s/g, "") === "+") imagPart = "1";
+			return complex(numericParser(realPart), numericParser(imagPart));
+		}
+	}
+	else {
+		throw new Error(form+" is an invalid for the 'form' parameter for the complex number parser.");
+	}
+}
+
 
 module.exports = {
-	ComplexNumber, randInt, randIntExclude, randI, randIE, neg, addsub,
+	randInt, randIntExclude, randI, randIE, neg, addsub,
 	fix, prec, piFracStr, rref, matToLatexStr, arrFromLatexStr, randMat,
 	isSingular, isInconsistent, hasUniqueSolution, hasInfiniteSolutions,
-	numericParser, vectSetToLatexStr, vectSetFromLatexStr
+	numericParser, vectSetToLatexStr, vectSetFromLatexStr, complexParser,
+	numFracs, strFracs
 };

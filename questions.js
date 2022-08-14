@@ -1,6 +1,6 @@
 
-const { ComplexNumber, arrFromLatexStr, numericParser, vectSetFromLatexStr } = require("./util.js");
-const { size, typeOf } = require("mathjs");
+const { complexParser, arrFromLatexStr, numericParser, vectSetFromLatexStr } = require("./util.js");
+const { size, typeOf, symbolicEqual, evaluate, Infinity } = require("mathjs");
 
 // Class for a concrete instance of a question and answer
 
@@ -9,7 +9,7 @@ const { size, typeOf } = require("mathjs");
 // Anything in math mode will be rendered in displaystyle, but inline.
 // Remember to escape slashes in the string
 class Question {
-	constructor(text, answer, answer_explanation, options, matrix_dims, info) {
+	constructor(text, answer, answer_explanation, options, answer_info, info, answerType) {
 		// The actual text of the question
 		this.text = render(text);
 		// The answer that will be checked against the user input.
@@ -18,19 +18,50 @@ class Question {
 		// Has the answer, followed by a short explanation on the next line.
 		this.answer_text = [];
 		for (var i = 0; i < this.answer.length; i++) {
-			if (options[i] === undefined || options[i].length === 0) {
-				this.answer_text.push(render("Correct Answer: $" + this.answer[i] + "$<br>" + answer_explanation[i]));
+			var aType = answerType[i];
+			if (Array.isArray(aType)) {
+				aType = aType[1];
+			}
+			if (aType === AnswerType.Series) {
+				this.answer_text.push(render("Correct Answer: $" + answer_info[i] + " " + this.answer[i] + "$<br>" + answer_explanation[i]));
+			}
+			else if (aType === AnswerType.MultipleChoice) {
+				var answerDisplay = "Not Found!";
+				for (var option of options[i]) {
+					if (option.value === this.answer[i]) {
+						answerDisplay = option.display;
+					}
+				}
+				this.answer_text.push(render("Correct Answer: " + answerDisplay + "<br>" + answer_explanation[i]));
+			}
+			else if (aType === AnswerType.SelectAll) {
+				var answerDisplay = "";
+				if (this.answer[i].length === 0) {
+					answerDisplay = "None of the above";
+				}
+				for (var j = 0; j < this.answer[i].length; j++) {
+					for (var option of options[i]) {
+						if (option.value === this.answer[i][j]) {
+							if (j !== 0) {
+								answerDisplay += ", ";
+							}
+							answerDisplay += option.display;
+						}
+					}
+				}
+				this.answer_text.push(render("Correct Answer: " + answerDisplay + "<br>" + answer_explanation[i]));
 			}
 			else {
-				this.answer_text.push(render("Correct Answer: " + this.answer[i] + "<br>" + answer_explanation[i]));
+				this.answer_text.push(render("Correct Answer: $" + this.answer[i] + "$<br>" + answer_explanation[i]));
 			}
 		}
 		// If this is a multiple choice question, then these are the choices
 		// otherwise, it is undefined
 		this.options = options;
 		// If this is a matrix question, then these are the dimensions of the matrix
+		// If this is a series question, then it is the Latex string for the summation (big sigma)
 		// otherwise, it is undefined
-		this.matrix_dims = matrix_dims;
+		this.answer_info = answer_info;
 		// extra info that gets passed to custom validators
 		this.info = info;
 	};
@@ -78,7 +109,7 @@ class Option {
 // same form, but each individual question will have different values for constants
 // These values will be represented by variables denoted by a # on one side and a space on the other side
 class QuestionClass {
-	constructor(text, answer_form, answer_explanation_form, replacements, options, matrix_info, extra_info) {
+	constructor(text, answer_form, answer_explanation_form, replacements, options, answer_type_info, extra_info) {
 		// The actual text of the question
 		this.text = text;
 		// The general form that the answer takes
@@ -113,12 +144,12 @@ class QuestionClass {
 				}
 			}
 		}
-		// If this is a matrix question (or a question with a matrix part), 
-		// then this is the string in the info object which will map to the 
-		// matrix whose dimensions are the same as the answers.
-		//  otherwise, it is undefined
-		if (!Array.isArray(matrix_info)) this.matrix_info = [matrix_info]; 
-		else this.matrix_info = matrix_info;
+		// If this is a matrix question, then this is the string in the info object
+		// which will map to the matrix whose dimensions are the same as the answers.
+		// For a series question, this is the summation info (the capital sigma and bounds) as a Latex string
+		// for a multiple choice question, this is whether or not to shuffle the options around
+		if (!Array.isArray(answer_type_info)) this.answer_type_info = [answer_type_info]; 
+		else this.answer_type_info = answer_type_info;
 		// If desired, this is a string or an array of string in the info object whose
 		// values will be passed to the validator (this provides extra information for custom validators)
 		// all values will be passed to all question parts
@@ -281,14 +312,23 @@ class QuestionClass {
 		var answer = [];
 		var answer_explanation = [];
 		var options = [];
-		var matrix_dims = [];
+		var answer_info = [];
 		var extra_info = [];
-		
+
 		for (var i = 0; i < this.answer_form.length; i++) {
 			if (Array.isArray(this.answer_form[i])) {
 				answer.push([]);
 				for (var j = 0; j < this.answer_form[i].length; j++) {
 					answer[i].push(this.parse(this.answer_form[i][j], info));
+				}
+			}
+			else if (this.answer_form[i] === undefined) {
+				var aType = answerType[i];
+				if (Array.isArray(aType)) {
+					aType = aType[1];
+				}
+				if (aType === AnswerType.SelectAll) {
+					answer.push(info.values[this.answer_type_info[i]]);
 				}
 			}
 			else {
@@ -308,43 +348,50 @@ class QuestionClass {
 			else if (this.options[i] === undefined) options.push(undefined);
 			else options.push(new Option(this.options[i].value, render(this.parse(this.options[i].display, info))));
 		}
-		for (var i = 0; i < this.matrix_info.length; i++) {
-			if (this.matrix_info[i] === undefined) {
-				matrix_dims.push(undefined);
+		for (var i = 0; i < this.answer_type_info.length; i++) {
+			var aType = answerType[i];
+			if (Array.isArray(aType)) {
+				aType = aType[1];
 			}
-			else {
-				var data = info.values[this.matrix_info[i]];
-				var aType = answerType[i];
-				if (Array.isArray(aType)) {
-					aType = aType[1];
-				}
+			if (this.answer_type_info[i] === undefined) {
+				answer_info.push(undefined);
+			}
+			else if (aType === AnswerType.Series || aType === AnswerType.MultipleChoice) {
+				answer_info.push(this.answer_type_info[i]);
+			}
+			else if(aType === AnswerType.Matrix || aType === AnswerType.Vectors){
+				var data = info.values[this.answer_type_info[i]];	
 				// single matrix
 				if (aType === AnswerType.Matrix) {
 					var dims = size(data);
-					matrix_dims.push([dims.get([0]), dims.get([1])]);
+					answer_info.push([dims.get([0]), dims.get([1])]);
 				}
 				// (column) vector set
 				else {
 					var rows = size(data[0]).get([0]);
-					matrix_dims.push([rows, data.length]);
+					answer_info.push([rows, data.length]);
 				}
 				
 			}
 		}
 		for (var i = 0; i < this.extra_info.length; i++) {
-			extra_info.push(info.values[this.extra_info[i]]);
+			if (this.extra_info[i] in info.values) {
+				extra_info.push(info.values[this.extra_info[i]]);
+			}
+			else {
+				extra_info.push(this.extra_info[i]);
+			}
 		}
 
 
 		// return a ready-to-use Question instance
-		return new Question(new_text, answer, answer_explanation, options, matrix_dims, extra_info);
+		return new Question(new_text, answer, answer_explanation, options, answer_info, extra_info, answerType);
 	};
 };
 
 
 
 // "enum" that represents some general catergories that answers can fall into
-//   matrix sizes are represented by an array.
 class AnswerType {
 	static Other = new AnswerType(0);
 	static Numeric = new AnswerType(1);
@@ -356,12 +403,11 @@ class AnswerType {
 	static Interval = new AnswerType(7);
 	static Matrix = new AnswerType(8);
 	static Vectors = new AnswerType(9);
+	static Expression = new AnswerType(10);
+	static Series = new AnswerType(11);
 	constructor(type) {
 		// type is the general type of the answer, (e.x. numeric, multiple choice, matrix)
 		this.type = type;
-		// value is any specific information about this particular answer (e.x. the dimensions of a matrix or vector)
-		// this will be set by the question class when it is instaniatated.
-		this.value = undefined;
 	}
 }
 
@@ -414,14 +460,148 @@ const vectorSetValidator = function (userArr, correctAnswer) {
 	}
 	return true;
 }
+const expressionParser = function (expr) {
+	// replace any latex specific stuff with general things
+	// things to replace:
+	// \frac{}{} with ()/()    [state 1]
+	// \sqrt{} with sqrt()     [state 2]
+	// {} with ()			   [state 3]
+	// juxtaposition with *	   [state 0]
+	var state = 0; // neutral state
+	var index = 0;
+	var parsed = "";
+	var currentTerm = ""; // v for variable, n for numeric, g for group (enclosed by parens)
+	while (index < expr.length) {
+		var char = expr.charAt(index);
+		if (state === 0) {
+			// command
+			if (char === "\\") {
+				if (currentTerm !== "") parsed += "*";
+				if (expr.charAt(index + 1) === "f") state = 1;
+				if (expr.charAt(index + 1) === "s") state = 2;
+			}
+			// group
+			else if (char === "{") {
+				if (currentTerm !== "") parsed += "*";
+				state = 3;
+			}
+			// variable
+			else if (char.match(/^[a-z]+$/i)) {
+				// variables can only be 1 letter long, so we always a *
+				if (currentTerm !== "") parsed += "*";
+				parsed += char;
+				currentTerm = "v";
+			}
+			// number
+			else if (char.match(/^[0-9\.]+$/)) {
+				// numbers can be several symbols long, so we don't always insert a *
+				if (currentTerm !== "" && currentTerm !== "n") parsed += "*";
+				parsed += char;
+				currentTerm = "n";
+			}
+			// spaces (LaTeX ignore whitespace, so we do too)
+			else if (char === " ") { }
+			else {
+				parsed += char;
+				currentTerm = "";
+			}
+			index++;
+		}
+		else if (state === 1) {
+			// get the first part (the numerator)
+			index += 5; // index now points to the first character after the {
+			var start1 = index;
+			var depth = 1;
+			while (depth !== 0) {
+				if (expr.charAt(index) === "{") depth++;
+				if (expr.charAt(index) === "}") depth--;
+				index++;
+			}
+			// index points to the char after the closing } of the numerator
+			var numer = expressionParser(expr.slice(start1, index-1));
+			// get the second part (the denomator)
+			index++;
+			var start2 = index;
+			var depth = 1;
+			while (depth !== 0) {
+				if (expr.charAt(index) === "{") depth++;
+				if (expr.charAt(index) === "}") depth--;
+				index++;
+			}
+			var denom = expressionParser(expr.slice(start2, index-1));
+			parsed += "(" + numer + ")/(" + denom + ")";
+			state = 0;
+			currentTerm = "g"; // we want to handle any factors after this fraction
+		}
+		else if (state === 2) {
+			parsed += "sqrt(";
+			index += 5; // index now points to the first character after the {
+			var start = index;
+			var depth = 1;
+			while (depth !== 0) {
+				if (expr.charAt(index) === "{") depth++;
+				if (expr.charAt(index) === "}") depth--;
+				index++;
+			}
+			// index points to the char after the closing } of the sqrt command
+			var subExpr = expr.slice(start, index-1);
+			parsed += expressionParser(subExpr);
+			parsed += ")";
+			state = 0;
+			currentTerm = "g"; // we want to handle any factors after this square root
+		}
+		else if (state === 3) {
+			var depth = 1;
+			var start = index;
+			while (depth !== 0) {
+				if (expr.charAt(index) === "{") depth++;
+				if (expr.charAt(index) === "}") depth--;
+				index++;
+			}
+			var subExpr = expressionParser(expr.slice(start, index-1));
+			parsed += "(" + subExpr + ")";
+			state = 0;
+			currentTerm = "g"; // we want to handle any factors after this group
+		}
+	}
+	return parsed;
+}
+const expressionValidator = function (userAnswer, correctAnswer) {
+	// my expression parser probably doesn't perfectly handle every case, but it does a decent job
+	// combined with the fact that math.js's parser seems to be pretty smart convinces me that 
+	// this expression validator will work correctly in almost all cases
+	var userExpr = expressionParser(userAnswer);
+	var correctExpr = expressionParser(correctAnswer);
+	console.log(userExpr);
+	console.log(correctExpr);
+	return userExpr === correctExpr || symbolicEqual(userExpr, correctExpr);
+}
 // When possible, maps the answer type to a function which can validate an answer of that type
 const validators = {
 	1: numericValidator,
 	2: function (userAnswer, correctAnswer) {
 		return userAnswer === correctAnswer;
 	},
-	3: function (userAnswer, correctAnswer) {
-		return new ComplexNumber(userAnswer).equals(new ComplexNumber(correctAnswer));
+	3: function (userAnswer, correctAnswer, previousAnswers, info) {
+		// form expresses whether the answer is written in rectangular form or exponential form
+		// form must always be the first thing listed in the info array for a complex problem
+		// if no form is specified, then we try to detect the form being used by the presence of e^
+		var form = info[0];
+		// parse userAnswer and correctAnswer as a complex number 
+		// return type is the complex number type from math.js
+		var userComplex = complexParser(userAnswer, form);
+		var correctComplex = complexParser(correctAnswer, form);
+		
+		// if one of the answers is Infinity, but not the other, then they are different
+		if (correctComplex === Infinity) {
+			return userComplex === Infinity;
+		}
+		else if (userComplex === Infinity) {
+			return false;
+		}
+		console.log("User: " + userComplex.toString());
+		console.log("Correct: " + correctComplex.toString());
+		return numericValidator(userComplex.re, correctComplex.re) && numericValidator(userComplex.im, correctComplex.im);
 	},
 	4: function (userAnswer, correctAnswer) {
 		return true; // I'm always right (;
@@ -462,14 +642,16 @@ const validators = {
 		return true;
 	},
 	8: matrixValidator,
-	9: vectorSetValidator
+	9: vectorSetValidator,
+	10: expressionValidator,
+	11: expressionValidator
 };
 const hints = {
 	1: "A decimal like 3, -2.2, or 2e-4 <br>" +
-		"A fraction like 22/7, -\\frac{3}{2}, or \\frac{-3}{8} <br>" + 
+		"A fraction like 22/7, -\\frac{\\sqrt{3}}{2}, or \\frac{-3}{8} <br>" + 
 		"A mixed number like 3\\frac{1}{3}, -2-1/2, 1+2/5, or -4\\frac{6}{5}.<br>" +
 		"Answers should be correct to 2 decimal places or 6 significant figures, whichever is less precise",
-	3: "A complex number like 2-3i, -1+4i, 7, -i, i, or 6i."
+	3: "A complex number like 2-3.5i, -1+\\sqrt{3}i, \\frac{5}{2}, -i, i, or \\frac{\\sqrt{3}}{2}i."
 };
 
 
@@ -521,7 +703,7 @@ class QuestionSet {
 	getInstance() {
 		var randomIndex = Math.floor(Math.random() * this.questions.length);
 		// TODO: Unhack
-		//randomIndex = 0;
+		//randomIndex = 4;
 		console.log(randomIndex);
 		return this.questions[randomIndex].getInstance(this.answerType);
 	};
@@ -538,7 +720,25 @@ class QuestionSet {
 	};
 };
 
+const theoremCreator = function (thmName, thmImpl, thmConditions, correctConditionKey, isFirst, uniConds) {
+	var text = "Select the conditions of the following theorem:<br>";
+	if (thmName !== undefined) {
+		text += "<b>" + thmName + "</b>";
+		text += "<br>";
+	}
+	if (uniConds !== undefined) {
+		text += uniConds + "<br>";
+	}
+	if (isFirst) {
+		text += thmImpl + " . . .";
+	}
+	else {
+		text += ". . . " + thmImpl;
+	}
+	return new QuestionClass(text, correctConditionKey, "", {}, thmConditions, true);
+};
+
 module.exports = {
 	QuestionSet, QuestionClass, Question, AnswerType, Option,
-	numericValidator, vectorSetValidator, matrixValidator
+	numericValidator, vectorSetValidator, matrixValidator, render, theoremCreator
 };

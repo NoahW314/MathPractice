@@ -2,21 +2,25 @@
 
 const { diffEqProbs, diffEqProbsBySubject, diffEqProbsNamed } = require("./subjects/DiffEq.js");
 const { linAlgProbs, linAlgProbsBySubject, linAlgProbsNamed } = require("./subjects/LinearAlgebra.js");
-const { AnswerType } =  require("./questions.js");
+const { complexProbs, complexProbsBySubject, complexProbsNamed } = require("./subjects/ComplexVariables.js");
+const { AnswerType, render } =  require("./questions.js");
 const { randInt, matToLatexStr, vectSetToLatexStr, numericParser } = require("./util.js");
 const { zeros } = require("mathjs");
 
 var problems = {
     "Differential Equations": diffEqProbs,
-    "Linear Algebra": linAlgProbs
+    "Linear Algebra": linAlgProbs,
+    "Complex Variables": complexProbs
 };
 var problemsBySubject = {
     "Differential Equations": diffEqProbsBySubject,
-    "Linear Algebra": linAlgProbsBySubject
+    "Linear Algebra": linAlgProbsBySubject,
+    "Complex Variables": complexProbsBySubject
 };
 var problemsNamed = {
     "Differential Equations": diffEqProbsNamed,
-    "Linear Algebra": linAlgProbsNamed
+    "Linear Algebra": linAlgProbsNamed,
+    "Complex Variables": complexProbsNamed
 };
 
 var answerInputDivs = [];
@@ -46,13 +50,22 @@ var getNewQuestion = function () {
     var topicArray;
     var topic = $("#topic_select").val();
     if (topic === "None") {
+        // In short, each level gets a certain allocation of tickets proportional to the number of 
+        // problems in the level.  However, each level down gets half as many tickets per problem
+        // as the level above.
         const numDiffs = problems[subject].length;
-        const max = (2 ** numDiffs) - 1;
-        const randNum = randInt(1, max);
+        var maxTicketNum = [];
+        var ticketNum = 0;
+        for (var i = 0; i < numDiffs; i++) {
+            var ticketsPerProblem = 2 ** (numDiffs - i - 1);
+            maxTicketNum[i] = ticketNum + ticketsPerProblem * problems[subject][i].length;
+            ticketNum = maxTicketNum[i];
+        }
+        const randNum = randInt(1, ticketNum);
         var randomIndex = -1;
         for (var i = 0; i < numDiffs; i++) {
-            if (randNum <= (2**(i+1))-1) {
-                randomIndex = numDiffs - 1 - i;
+            if (randNum <= maxTicketNum[i]) {
+                randomIndex = i;
                 break;
             }
         }
@@ -70,7 +83,7 @@ var getNewQuestion = function () {
     }
     var randomIndex = Math.floor(Math.random() * topicArray.length);
     // TODO: Unhack  (position in importance level array)
-    //randomIndex = topicArray.length-1;
+    //randomIndex = topicArray.length-2;
     //console.log(randomIndex);
     var setArray = topicArray[randomIndex];
     randomIndex = Math.floor(Math.random() * setArray.length);
@@ -87,7 +100,7 @@ var getNewQuestion = function () {
     for (var i = 0; i < currQuestionSet.answerType.length; i++) {
 
         var aType;
-        var answerText = "Answer";
+        var answerText = "Answer:";
         if (Array.isArray(currQuestionSet.answerType[i])) {
             answerText = currQuestionSet.answerType[i][0];
             aType = currQuestionSet.answerType[i][1];
@@ -98,11 +111,15 @@ var getNewQuestion = function () {
         if (aType === AnswerType.MultipleChoice) {
             // create the wrapper for the multiple choice element
             var selectDiv = $("<div class='answer_input'></div>");
-            if (answerText !== "Answer") {
+            if (answerText !== "Answer:") {
                 selectDiv.text(answerText);
                 selectDiv.append($("<br>"));
             }
 
+            var options = currQuestion.options[i];
+            if (currQuestion.answer_info[i]) {
+                options = currQuestion.options[i].sort(() => Math.random() - 0.5);
+            }
             // place the new options in the wrapper
             for (var option of currQuestion.options[i]) {
                 var input = $('<input type="radio" name="answer_'+i+'">');
@@ -123,7 +140,7 @@ var getNewQuestion = function () {
         else if (aType === AnswerType.SelectAll) {
             // create the wrapper for the multiple choice element
             var selectDiv = $("<div class='answer_input'></div>");
-            if (answerText !== "Answer") {
+            if (answerText !== "Answer:") {
                 selectDiv.text(answerText);
                 selectDiv.append($("<br>"));
             }
@@ -149,11 +166,11 @@ var getNewQuestion = function () {
         }
         else if (aType === AnswerType.Matrix) {
             // get the dimensions of the matrix
-            var rows = currQuestion.matrix_dims[i][0];
-            var cols = currQuestion.matrix_dims[i][1];
+            var rows = currQuestion.answer_info[i][0];
+            var cols = currQuestion.answer_info[i][1];
             // create the wrapper for matrix boxes
             var matrixDiv = $("<div class='answer_input' id='matrix_div_thing_input'></div>");
-            if (answerText === "Answer") {
+            if (answerText === "Answer:") {
                 answerText = "Matrix: ";
             }
             matrixDiv.append($("<p>" + answerText + "</p>"));
@@ -170,13 +187,13 @@ var getNewQuestion = function () {
         }
         else if (aType === AnswerType.Vectors) {
             // get the "dimensions" of the vector set
-            var dims = currQuestion.matrix_dims[i];
+            var dims = currQuestion.answer_info[i];
             var rows = dims[0];
             var num = dims[1]; 
             
             // create the wrapper for vector boxes
             var setDiv = $("<div class='answer_input' id='vector_div_thing_input'></div>");
-            if (answerText === "Answer") {
+            if (answerText === "Answer:") {
                 answerText = "Vector Set: ";
             }
             setDiv.append($('<span>' + answerText + '</span>'));
@@ -201,8 +218,12 @@ var getNewQuestion = function () {
         else {
             // create the wrapper for the input element
             var inputDiv = $("<div class='answer_input'></div>");
+            // we parse the answer label text as Latex (primarily to support the series answer type, but it could be useful elsewhere)
+            if (aType === AnswerType.Series) {
+                answerText = render("$\\displaystyle "+currQuestion.answer_info[i]+"$");
+            }
             // add the inards of the input stuff
-            inputDiv.append($("<label for='answer_input_"+i+"'>"+answerText+":</label>"));
+            inputDiv.append($("<label for='answer_input_" + i + "'>" + answerText + "</label>"));
             inputDiv.append($("<input type='text' class='answer_input_input' id='answer_input_" + i + "'>"));
             inputDiv.append($('<span class="answer_type_hint" id="answer_hint_'+i+'">\
                                 <span class="answer_type_text" hidden></span>\
@@ -279,8 +300,8 @@ $("#answer_submit").click(function () {
             }).get();
         }
         else if (aType === AnswerType.Matrix) {
-            var rows = currQuestion.matrix_dims[i][0];
-            var cols = currQuestion.matrix_dims[i][1];
+            var rows = currQuestion.answer_info[i][0];
+            var cols = currQuestion.answer_info[i][1];
             var answerMat = zeros(rows, cols);
             answer = [];
             for (var k = 0; k < rows; k++) {
@@ -296,6 +317,7 @@ $("#answer_submit").click(function () {
             try {
                 katex.render(latexMatrixString, renderedAnswerInput);
             } catch (err) {
+                console.error(err);
                 if (err instanceof katex.ParseError) {
                     katex.render(answerMat, renderedAnswerInput, { throwOnError: false });
                     return;
@@ -304,8 +326,8 @@ $("#answer_submit").click(function () {
             }
         }
         else if (aType === AnswerType.Vectors) {
-            var rows = currQuestion.matrix_dims[i][0];
-            var num = currQuestion.matrix_dims[i][1];
+            var rows = currQuestion.answer_info[i][0];
+            var num = currQuestion.answer_info[i][1];
             var answerVects = [];
             answer = [];
             for (var k = 0; k < num; k++) {
@@ -322,6 +344,7 @@ $("#answer_submit").click(function () {
             try {
                 katex.render(latexVectString, renderedAnswerInput);
             } catch (err) {
+                console.error(err);
                 if (err instanceof katex.ParseError) {
                     katex.render(answerVects, renderedAnswerInput, { throwOnError: false });
                     return;
@@ -334,16 +357,24 @@ $("#answer_submit").click(function () {
             var renderedAnswerInput = answerInputDivs[i].find(".rendered_answer_input").get(0);
 
             try {
-                katex.render("\\displaystyle" + answer, renderedAnswerInput);
+                if (aType === AnswerType.Series) {
+                    katex.render("\\displaystyle "+currQuestion.answer_info[i]+" "+answer, renderedAnswerInput);
+                }
+                else {
+                    katex.render("\\displaystyle " + answer, renderedAnswerInput);
+                }
             } catch (err) {
+                console.error(err);
                 if (err instanceof katex.ParseError) {
+                    console.error(err);
                     katex.render(answer, renderedAnswerInput, { throwOnError: false });
                     return;
                 }
-                else { throw err; }
+                else {
+                    throw err;
+                }
             }
         }
-
         var isCorrect = evaluateAnswerPart(answer, i, prevAnswers);
         if (!isCorrect) areAllCorrect = false;
         prevAnswers.push(answer);
@@ -386,6 +417,7 @@ $("#answer_input_div").on("click", ".show_latex", function () {
     try {
         katex.render("\\displaystyle" + answer, renderedAnswerInput);
     } catch (err) {
+        console.error(err);
         if (err instanceof katex.ParseError) {
             katex.render(answer, renderedAnswerInput, { throwOnError: false });
             return;
